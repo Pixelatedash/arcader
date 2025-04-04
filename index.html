@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HTML Game Player</title>
+    <style>
+        :root {
+            --bg-color: #121212;
+            --card-color: #1e1e1e;
+            --accent-color: #bb86fc;
+            --text-color: #e1e1e1;
+            --text-muted: #aaaaaa;
+            --border-color: #333;
+            --hover-color: #252525;
+        }
+        
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 5px;
+            font-weight: 600;
+            font-size: 2.5rem;
+            background: linear-gradient(90deg, #bb86fc, #03dac6);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: var(--text-muted);
+            margin-bottom: 30px;
+            font-size: 1.1rem;
+        }
+        
+        #dropZone {
+            border: 3px dashed var(--border-color);
+            border-radius: 16px;
+            padding: 50px 20px;
+            text-align: center;
+            background-color: var(--card-color);
+            margin-bottom: 25px;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        
+        #dropZone.highlight {
+            border-color: var(--accent-color);
+            background-color: rgba(187, 134, 252, 0.1);
+            transform: scale(1.01);
+        }
+        
+        #previewContainer {
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            overflow: hidden;
+            background-color: black;
+            min-height: 600px;
+            position: relative;
+        }
+        
+        #gameFrame {
+            width: 100%;
+            height: 100%;
+            border: none;
+            display: none;
+        }
+        
+        #placeholder {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 600px;
+            color: var(--text-muted);
+            text-align: center;
+        }
+        
+        #placeholder svg {
+            width: 80px;
+            height: 80px;
+            margin-bottom: 20px;
+            opacity: 0.7;
+        }
+        
+        .controls {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 15px;
+        }
+        
+        button {
+            background-color: var(--accent-color);
+            color: black;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: opacity 0.2s;
+        }
+        
+        button:hover {
+            opacity: 0.9;
+        }
+        
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        #fileInfo {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            align-self: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HTML Game Player</h1>
+        <p class="subtitle">Drag and drop HTML game files to play</p>
+        
+        <div id="dropZone">
+            <p>Drop Game File Here</p>
+            <p><small>or click to select file</small></p>
+            <input type="file" id="fileInput" accept=".html,.htm" style="display: none;">
+        </div>
+        
+        <div id="previewContainer">
+            <div id="placeholder">
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                </svg>
+                <p>No game loaded</p>
+                <p><small>Drag an HTML game file above</small></p>
+            </div>
+            <iframe id="gameFrame" sandbox="allow-scripts allow-same-origin allow-popups allow-forms"></iframe>
+        </div>
+        
+        <div class="controls">
+            <div id="fileInfo">No file loaded</div>
+            <button id="fullscreenBtn" disabled>Fullscreen</button>
+        </div>
+    </div>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const fileInput = document.getElementById('fileInput');
+        const gameFrame = document.getElementById('gameFrame');
+        const placeholder = document.getElementById('placeholder');
+        const fullscreenBtn = document.getElementById('fullscreenBtn');
+        const fileInfo = document.getElementById('fileInfo');
+        
+        // Handle drag and drop
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('highlight');
+        });
+        
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('highlight');
+        });
+        
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('highlight');
+            if (e.dataTransfer.files.length) {
+                loadGameFile(e.dataTransfer.files[0]);
+            }
+        });
+        
+        dropZone.addEventListener('click', () => fileInput.click());
+        
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length) {
+                loadGameFile(fileInput.files[0]);
+            }
+        });
+        
+        fullscreenBtn.addEventListener('click', () => {
+            if (gameFrame.requestFullscreen) {
+                gameFrame.requestFullscreen();
+            } else if (gameFrame.webkitRequestFullscreen) {
+                gameFrame.webkitRequestFullscreen();
+            }
+        });
+        
+        function loadGameFile(file) {
+            if (!file.name.endsWith('.html') && !file.name.endsWith('.htm')) {
+                alert('Please select an HTML file');
+                return;
+            }
+            
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                // Create blob URL for the game
+                const blob = new Blob([e.target.result], {type: 'text/html'});
+                const url = URL.createObjectURL(blob);
+                
+                // Load into iframe
+                gameFrame.src = url;
+                gameFrame.style.display = 'block';
+                placeholder.style.display = 'none';
+                fullscreenBtn.disabled = false;
+                fileInfo.textContent = file.name;
+                
+                // Special handling for emulator games
+                if (file.name.includes('mario')) {
+                    gameFrame.onload = function() {
+                        // Ensure the emulator has proper access
+                        const frameDoc = gameFrame.contentDocument || gameFrame.contentWindow.document;
+                        const frameWin = gameFrame.contentWindow;
+                        
+                        // Inject required scripts if needed
+                        if (!frameWin.EJS_player) {
+                            const script1 = frameDoc.createElement('script');
+                            script1.src = 'https://cdn.jsdelivr.net/gh/a456pur/seraph@81f551ca0aa8e3d6018d32d8ac5904ac9bc78f76/storage/emulatorjs/data/loader.js';
+                            frameDoc.body.appendChild(script1);
+                            
+                            const script2 = frameDoc.createElement('script');
+                            script2.src = 'https://cdn.jsdelivr.net/gh/a456pur/seraph@ae2fcc6d6a9cd051654fcc0519080db1f79cf2a7/storage/js/cloak.js';
+                            frameDoc.body.appendChild(script2);
+                        }
+                    };
+                }
+            };
+            reader.readAsText(file);
+        }
+    </script>
+</body>
+</html>
