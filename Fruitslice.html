@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Fruit Slice</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #121212;
+            touch-action: manipulation;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #4d88ff;
+            background: #1e1e1e;
+            max-width: 100%;
+            max-height: 100%;
+            touch-action: none;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+        }
+        #combo {
+            position: absolute;
+            top: 40px;
+            left: 10px;
+            color: #4d88ff;
+            font-size: 18px;
+            display: none;
+        }
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 36px;
+        }
+        #restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #4d88ff;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0 | Lives: 3</div>
+    <div id="combo"></div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="game-over">
+        Game Over!
+        <div id="final-score"></div>
+        <button id="restart-btn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const comboElement = document.getElementById('combo');
+        const gameOverElement = document.getElementById('game-over');
+        const finalScoreElement = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+        
+        // Game settings
+        const FRUIT_TYPES = ['🍎', '🍊', '🍋', '🍉', '🍇', '🍓', '🍑', '🍍'];
+        const FRUIT_SIZE = 80; // Increased from 40 to 80
+        const SPAWN_RATE = 1000; // ms
+        const GRAVITY = 0.2;
+        const INITIAL_LIVES = 3;
+        const FRUIT_SPEED = 10; // Increased speed for bigger fruits
+        
+        // Game variables
+        let fruits = [];
+        let score = 0;
+        let lives = INITIAL_LIVES;
+        let gameRunning = false;
+        let animationFrameId;
+        let lastSpawnTime = 0;
+        let swipeStart = null;
+        let comboCount = 0;
+        let lastSliceTime = 0;
+        let sliceTrail = [];
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight) * 0.9;
+            canvas.width = size;
+            canvas.height = size * 1.2;
+            initGame();
+        }
+        
+        // Initialize game
+        function initGame() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            fruits = [];
+            score = 0;
+            lives = INITIAL_LIVES;
+            lastSpawnTime = 0;
+            comboCount = 0;
+            gameOverElement.style.display = 'none';
+            comboElement.style.display = 'none';
+            gameRunning = true;
+            
+            updateScore();
+            gameLoop();
+        }
+        
+        // Game loop
+        function gameLoop(timestamp) {
+            if (!gameRunning) return;
+            
+            update(timestamp);
+            draw();
+            
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+        
+        // Update game state
+        function update(timestamp) {
+            // Spawn new fruits
+            if (timestamp - lastSpawnTime > SPAWN_RATE) {
+                spawnFruit();
+                lastSpawnTime = timestamp;
+            }
+            
+            // Update fruits
+            for (let i = fruits.length - 1; i >= 0; i--) {
+                const fruit = fruits[i];
+                
+                // Apply gravity
+                fruit.vy += GRAVITY;
+                fruit.y += fruit.vy;
+                
+                // Remove fruits that fall off screen
+                if (fruit.y > canvas.height + FRUIT_SIZE) {
+                    if (!fruit.sliced) {
+                        lives--;
+                        updateScore();
+                        if (lives <= 0) {
+                            gameOver();
+                            return;
+                        }
+                    }
+                    fruits.splice(i, 1);
+                }
+            }
+            
+            // Update combo timer
+            if (comboCount > 0 && timestamp - lastSliceTime > 1000) {
+                comboCount = 0;
+                comboElement.style.display = 'none';
+            }
+            
+            // Update slice trail
+            if (sliceTrail.length > 0) {
+                sliceTrail = sliceTrail.filter(trail => timestamp - trail.time < 200);
+            }
+        }
+        
+        // Draw game
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw slice trails
+            ctx.strokeStyle = 'rgba(77, 136, 255, 0.7)';
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            sliceTrail.forEach(trail => {
+                ctx.beginPath();
+                ctx.moveTo(trail.start.x, trail.start.y);
+                ctx.lineTo(trail.end.x, trail.end.y);
+                ctx.stroke();
+            });
+            
+            // Draw fruits
+            fruits.forEach(fruit => {
+                ctx.font = `${FRUIT_SIZE}px Arial`;
+                
+                // Draw fruit shadow if not sliced
+                if (!fruit.sliced) {
+                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillText(fruit.type, fruit.x - FRUIT_SIZE/2 + 3, fruit.y + FRUIT_SIZE/2 + 3);
+                }
+                
+                // Draw main fruit
+                ctx.fillStyle = fruit.sliced ? 'rgba(255,255,255,0.5)' : 'white';
+                ctx.fillText(fruit.type, fruit.x - FRUIT_SIZE/2, fruit.y + FRUIT_SIZE/2);
+                
+                // Draw slice effect if sliced
+                if (fruit.sliced) {
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 3;
+                    ctx.beginPath();
+                    ctx.moveTo(fruit.sliceStart.x, fruit.sliceStart.y);
+                    ctx.lineTo(fruit.sliceEnd.x, fruit.sliceEnd.y);
+                    ctx.stroke();
+                    
+                    // Draw fruit halves
+                    ctx.save();
+                    ctx.clip();
+                    ctx.fillStyle = 'rgba(255,255,255,0.3)';
+                    ctx.fillText(fruit.type, fruit.x - FRUIT_SIZE/2, fruit.y + FRUIT_SIZE/2);
+                    ctx.restore();
+                }
+            });
+        }
+        
+        // Spawn a new fruit
+        function spawnFruit() {
+            fruits.push({
+                type: FRUIT_TYPES[Math.floor(Math.random() * FRUIT_TYPES.length)],
+                x: Math.random() * (canvas.width - FRUIT_SIZE) + FRUIT_SIZE/2,
+                y: canvas.height + FRUIT_SIZE,
+                vy: -FRUIT_SPEED - Math.random() * 3,
+                sliced: false,
+                rotation: Math.random() * Math.PI * 2,
+                rotationSpeed: (Math.random() - 0.5) * 0.1
+            });
+        }
+        
+        // Handle slice
+        function handleSlice(start, end) {
+            if (!gameRunning) return;
+            
+            const now = performance.now();
+            let slicedAny = false;
+            
+            // Check if any fruits were sliced
+            for (let i = 0; i < fruits.length; i++) {
+                const fruit = fruits[i];
+                
+                if (!fruit.sliced && lineIntersectsFruit(start, end, fruit)) {
+                    fruit.sliced = true;
+                    fruit.sliceStart = start;
+                    fruit.sliceEnd = end;
+                    
+                    // Combo system
+                    if (now - lastSliceTime < 500) {
+                        comboCount++;
+                        updateCombo();
+                    } else {
+                        comboCount = 1;
+                    }
+                    
+                    const points = 10 * comboCount;
+                    score += points;
+                    lastSliceTime = now;
+                    slicedAny = true;
+                    updateScore();
+                    
+                    // Add to slice trail
+                    sliceTrail.push({
+                        start: start,
+                        end: end,
+                        time: now
+                    });
+                }
+            }
+            
+            if (slicedAny) {
+                updateCombo();
+            } else if (comboCount > 0) {
+                comboCount = 0;
+                comboElement.style.display = 'none';
+            }
+        }
+        
+        // Check if line intersects fruit
+        function lineIntersectsFruit(start, end, fruit) {
+            // More accurate collision with larger fruits
+            const dx = end.x - start.x;
+            const dy = end.y - start.y;
+            const length = Math.sqrt(dx * dx + dy * dy);
+            
+            // Check multiple points along the slice line
+            const steps = Math.max(5, Math.floor(length / 10));
+            for (let i = 0; i <= steps; i++) {
+                const t = i / steps;
+                const px = start.x + dx * t;
+                const py = start.y + dy * t;
+                
+                // Check distance from fruit center
+                const distX = px - fruit.x;
+                const distY = py - fruit.y;
+                const distance = Math.sqrt(distX * distX + distY * distY);
+                
+                if (distance < FRUIT_SIZE/2) {
+                    return true;
+                }
+            }
+            return false;
+        }
+        
+        // Update score display
+        function updateScore() {
+            scoreElement.textContent = `Score: ${score} | Lives: ${lives}`;
+        }
+        
+        // Update combo display
+        function updateCombo() {
+            if (comboCount > 1) {
+                comboElement.textContent = `COMBO x${comboCount}! +${10 * comboCount}`;
+                comboElement.style.display = 'block';
+                
+                // Animate combo text
+                comboElement.style.transform = 'scale(1.2)';
+                setTimeout(() => {
+                    comboElement.style.transform = 'scale(1)';
+                }, 100);
+            }
+        }
+        
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            gameOverElement.style.display = 'flex';
+            finalScoreElement.textContent = `Final Score: ${score}`;
+        }
+        
+        // Touch event handlers
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            swipeStart = {
+                x: e.touches[0].clientX - rect.left,
+                y: e.touches[0].clientY - rect.top
+            };
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (swipeStart) {
+                const rect = canvas.getBoundingClientRect();
+                const swipeEnd = {
+                    x: e.touches[0].clientX - rect.left,
+                    y: e.touches[0].clientY - rect.top
+                };
+                
+                handleSlice(swipeStart, swipeEnd);
+                swipeStart = swipeEnd;
+            }
+        });
+        
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            swipeStart = null;
+        });
+        
+        // Mouse event handlers (for desktop)
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            swipeStart = {
+                x: e.clientX - rect.left,
+                y: e.clientY - rect.top
+            };
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (swipeStart) {
+                const rect = canvas.getBoundingClientRect();
+                const swipeEnd = {
+                    x: e.clientX - rect.left,
+                    y: e.clientY - rect.top
+                };
+                
+                handleSlice(swipeStart, swipeEnd);
+                swipeStart = swipeEnd;
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            swipeStart = null;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            swipeStart = null;
+        });
+        
+        restartBtn.addEventListener('click', initGame);
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Start the game
+        resizeCanvas();
+    </script>
+</body>
+</html>
