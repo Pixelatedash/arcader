@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Mario</title>
+    <title>Super Mario</title>
     <style>
         body {
             margin: 0;
@@ -20,6 +20,76 @@
             background: #1e1e1e;
             max-width: 100%;
             max-height: 100%;
+            display: none;
+        }
+        #menu {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 90%;
+            max-width: 500px;
+        }
+        .menu-title {
+            color: #4d88ff;
+            font-size: 36px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .menu-section {
+            width: 100%;
+            background: rgba(30, 30, 30, 0.8);
+            border: 2px solid #4d88ff;
+            border-radius: 10px;
+            padding: 15px;
+            box-sizing: border-box;
+        }
+        .section-title {
+            color: white;
+            font-size: 20px;
+            margin-bottom: 10px;
+        }
+        .menu-btn {
+            padding: 12px 20px;
+            background: rgba(77, 136, 255, 0.3);
+            border: 2px solid #4d88ff;
+            border-radius: 10px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+            width: 100%;
+            text-align: center;
+            margin-bottom: 10px;
+            transition: all 0.2s;
+        }
+        .menu-btn:hover, .menu-btn:active {
+            background: rgba(77, 136, 255, 0.6);
+        }
+        .menu-btn.selected {
+            background: #4d88ff;
+            font-weight: bold;
+        }
+        .level-btn {
+            display: inline-block;
+            width: 60px;
+            height: 60px;
+            line-height: 60px;
+            text-align: center;
+            margin: 5px;
+        }
+        #settings {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+        }
+        .slider {
+            width: 60%;
         }
         #score {
             position: absolute;
@@ -27,6 +97,15 @@
             left: 10px;
             color: white;
             font-size: 20px;
+            display: none;
+        }
+        #level-name {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 20px;
+            display: none;
         }
         #controls {
             position: absolute;
@@ -36,6 +115,7 @@
             justify-content: space-between;
             padding: 0 20px;
             box-sizing: border-box;
+            display: none;
         }
         .control-btn {
             width: 80px;
@@ -67,6 +147,21 @@
             align-items: center;
             color: white;
             font-size: 36px;
+            z-index: 10;
+        }
+        #back-btn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            padding: 5px 10px;
+            background: rgba(77, 136, 255, 0.3);
+            border: 2px solid #4d88ff;
+            border-radius: 5px;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+            display: none;
+            z-index: 5;
         }
         #restart-btn {
             margin-top: 20px;
@@ -81,8 +176,47 @@
     </style>
 </head>
 <body>
-    <div id="score">Score: 0</div>
+    <div id="menu">
+        <div class="menu-title">Super Mario</div>
+        
+        <div class="menu-section">
+            <div class="section-title">Levels</div>
+            <div id="level-buttons">
+                <div class="menu-btn level-btn selected" data-level="1">1</div>
+                <div class="menu-btn level-btn" data-level="2">2</div>
+                <div class="menu-btn level-btn" data-level="3">3</div>
+                <div class="menu-btn level-btn" data-level="4">4</div>
+                <div class="menu-btn level-btn" data-level="5">5</div>
+            </div>
+        </div>
+        
+        <div class="menu-section" id="settings">
+            <div class="section-title">Settings</div>
+            <div class="setting-row">
+                <span>Music Volume</span>
+                <input type="range" class="slider" id="music-volume" min="0" max="100" value="50">
+            </div>
+            <div class="setting-row">
+                <span>Sound Effects</span>
+                <input type="range" class="slider" id="sfx-volume" min="0" max="100" value="80">
+            </div>
+            <div class="setting-row">
+                <span>Difficulty</span>
+                <select id="difficulty" class="menu-btn">
+                    <option value="easy">Easy</option>
+                    <option value="normal" selected>Normal</option>
+                    <option value="hard">Hard</option>
+                </select>
+            </div>
+        </div>
+        
+        <div class="menu-btn" id="play-btn">Play</div>
+    </div>
+    
     <canvas id="gameCanvas"></canvas>
+    <div id="score">Score: 0</div>
+    <div id="level-name">Level 1</div>
+    <button id="back-btn">Back to Menu</button>
     
     <div id="controls">
         <div class="control-btn" id="left-btn">←</div>
@@ -97,15 +231,18 @@
     </div>
 
     <script>
+        // Game elements
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('menu');
         const scoreElement = document.getElementById('score');
+        const levelNameElement = document.getElementById('level-name');
         const gameOverElement = document.getElementById('game-over');
         const finalScoreElement = document.getElementById('final-score');
         const restartBtn = document.getElementById('restart-btn');
-        const leftBtn = document.getElementById('left-btn');
-        const rightBtn = document.getElementById('right-btn');
-        const jumpBtn = document.getElementById('jump-btn');
+        const backBtn = document.getElementById('back-btn');
+        const playBtn = document.getElementById('play-btn');
+        const levelButtons = document.querySelectorAll('.level-btn');
         
         // Game settings
         const MARIO_WIDTH = 30;
@@ -116,7 +253,6 @@
         const GRAVITY = 0.8;
         const JUMP_FORCE = -15;
         const MOVE_SPEED = 5;
-        const JUMP_BUFFER_TIME = 100; // milliseconds to buffer jump input
         
         // Game variables
         let mario;
@@ -127,15 +263,423 @@
         let gameRunning = false;
         let cameraX = 0;
         let levelWidth = 3000;
-        let keys = {
-            left: false,
-            right: false,
-            jump: false
-        };
+        let keys = { left: false, right: false, jump: false };
         let animationFrameId;
-        let lastJumpTime = 0;
-        let jumpBuffered = false;
+        let currentLevel = 1;
+        let difficulty = 'normal';
+        let canJump = true;
         
+        // Level data
+        const levels = {
+            1: {
+                name: "Mushroom Plains",
+                length: 3000,
+                platforms: [
+                    {x: 0, y: 400, width: 200, height: PLATFORM_HEIGHT},
+                    {x: 300, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 500, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 700, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 900, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1100, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1300, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1500, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1700, y: 400, width: 200, height: PLATFORM_HEIGHT},
+                    {x: 2000, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2200, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2400, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2600, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2800, y: 350, width: 100, height: PLATFORM_HEIGHT}
+                ],
+                enemies: [
+                    {x: 400, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 800, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1200, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1600, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2100, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2500, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2}
+                ],
+                coins: [
+                    {x: 350, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 550, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 750, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 950, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1150, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1350, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1550, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2050, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2250, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2450, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2650, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2850, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false}
+                ]
+            },
+            2: {
+                name: "Desert Hills",
+                length: 4000,
+                platforms: [
+                    {x: 0, y: 450, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 200, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 350, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 500, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 700, y: 350, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 900, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1100, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1300, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 1500, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1700, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1900, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2100, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 2300, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2500, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2700, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2900, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3100, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3300, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 3500, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3700, y: 300, width: 100, height: PLATFORM_HEIGHT}
+                ],
+                enemies: [
+                    {x: 250, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 550, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 950, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1350, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1750, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2150, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2550, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2950, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3350, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2}
+                ],
+                coins: [
+                    {x: 225, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 375, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 525, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 725, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 925, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1125, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1375, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1575, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1775, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1975, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2175, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2375, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2575, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2775, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2975, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3175, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3375, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3575, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3775, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false}
+                ]
+            },
+            3: {
+                name: "Snowy Peaks",
+                length: 5000,
+                platforms: [
+                    {x: 0, y: 450, width: 200, height: PLATFORM_HEIGHT},
+                    {x: 250, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 400, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 550, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 700, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 850, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 1050, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1200, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1350, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1500, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1650, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1800, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 2000, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2150, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2300, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2450, y: 200, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2600, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2750, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2900, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3050, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 3250, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3400, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3550, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3700, y: 200, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3850, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4000, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4150, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4300, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 4500, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4650, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4800, y: 250, width: 100, height: PLATFORM_HEIGHT}
+                ],
+                enemies: [
+                    {x: 300, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 600, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 900, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1300, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1600, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1900, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2200, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2500, y: 180, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2800, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3100, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3400, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3700, y: 180, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4000, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4300, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4600, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2}
+                ],
+                coins: [
+                    {x: 275, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 425, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 575, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 725, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 875, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1075, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1225, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1375, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1525, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1675, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1825, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2025, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2175, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2325, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2475, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2625, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2775, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2925, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3075, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3275, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3425, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3575, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3725, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3875, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4025, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4175, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4325, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4525, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4675, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4825, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false}
+                ]
+            },
+            4: {
+                name: "Lava Caverns",
+                length: 6000,
+                platforms: [
+                    {x: 0, y: 450, width: 200, height: PLATFORM_HEIGHT},
+                    {x: 250, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 400, y: 450, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 550, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 700, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 850, y: 450, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 1050, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1200, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1350, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1500, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1650, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1800, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 2000, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2150, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2300, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2450, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2600, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2750, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2900, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3050, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 3250, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3400, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3550, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3700, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3850, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4000, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4150, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4300, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 4500, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4650, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4800, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4950, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5100, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5250, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5400, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5550, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 5750, y: 350, width: 100, height: PLATFORM_HEIGHT}
+                ],
+                enemies: [
+                    {x: 300, y: 430, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 600, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 900, y: 430, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1300, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1600, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1900, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2200, y: 430, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2500, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2800, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3100, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3400, y: 430, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3700, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4000, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4300, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4600, y: 430, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4900, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 5200, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 5500, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 5800, y: 430, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2}
+                ],
+                coins: [
+                    {x: 275, y: 400, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 425, y: 450, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 575, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 725, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 875, y: 400, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1075, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1225, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1375, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1525, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1675, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1825, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2025, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2175, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2325, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2475, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2625, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2775, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2925, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3075, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3275, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3425, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3575, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3725, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3875, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4025, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4175, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4325, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4525, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4675, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4825, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4975, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5125, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5275, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5425, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5575, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5775, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false}
+                ]
+            },
+            5: {
+                name: "Cloud Kingdom",
+                length: 7000,
+                platforms: [
+                    {x: 0, y: 450, width: 200, height: PLATFORM_HEIGHT},
+                    {x: 250, y: 400, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 400, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 550, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 700, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 850, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1000, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1150, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 1350, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1500, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1650, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1800, y: 200, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 1950, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2100, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2250, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2400, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 2600, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2750, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 2900, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3050, y: 200, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3200, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3350, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3500, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 3650, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 3850, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4000, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4150, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4300, y: 200, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4450, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4600, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4750, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 4900, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 5100, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5250, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5400, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5550, y: 200, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5700, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 5850, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 6000, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 6150, y: 400, width: 150, height: PLATFORM_HEIGHT},
+                    {x: 6350, y: 350, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 6500, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 6650, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                    {x: 6800, y: 200, width: 100, height: PLATFORM_HEIGHT}
+                ],
+                enemies: [
+                    {x: 300, y: 380, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 600, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 900, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1300, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1600, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 1900, y: 180, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2200, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2500, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 2800, y: 180, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3100, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3400, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 3700, y: 180, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4000, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4300, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4600, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 4900, y: 330, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 5200, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 5500, y: 180, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 5800, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 6100, y: 280, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 6400, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                    {x: 6700, y: 180, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2}
+                ],
+                coins: [
+                    {x: 275, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 425, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 575, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 725, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 875, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1025, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1175, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1375, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1525, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1675, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1825, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 1975, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2125, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2275, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2425, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2625, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2775, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 2925, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3075, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3225, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3375, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3525, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3675, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 3875, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4025, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4175, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4325, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4475, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4625, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4775, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 4925, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5125, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5275, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5425, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5575, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5725, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 5875, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 6025, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 6175, y: 350, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 6375, y: 300, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 6525, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 6675, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                    {x: 6825, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false}
+                ]
+            }
+        };
+
         // Set canvas size
         function resizeCanvas() {
             const size = Math.min(window.innerWidth, window.innerHeight) * 0.9;
@@ -143,15 +687,13 @@
             canvas.height = size * 0.6;
         }
         
-        resizeCanvas();
-        window.addEventListener('resize', resizeCanvas);
-        
         // Initialize game
         function initGame() {
-            // Cancel any existing animation frame
             if (animationFrameId) {
                 cancelAnimationFrame(animationFrameId);
             }
+            
+            const level = levels[currentLevel];
             
             mario = {
                 x: 100,
@@ -160,42 +702,50 @@
                 height: MARIO_HEIGHT,
                 velocityX: 0,
                 velocityY: 0,
-                isJumping: true,
-                facingRight: true,
-                onGround: false
+                isJumping: false,
+                facingRight: true
             };
             
-            platforms = [
-                {x: 0, y: canvas.height - PLATFORM_HEIGHT, width: levelWidth, height: PLATFORM_HEIGHT}, // Ground
-                {x: 200, y: 300, width: 100, height: PLATFORM_HEIGHT},
-                {x: 400, y: 250, width: 100, height: PLATFORM_HEIGHT},
-                {x: 600, y: 200, width: 100, height: PLATFORM_HEIGHT},
-                {x: 800, y: 300, width: 100, height: PLATFORM_HEIGHT},
-                {x: 1000, y: 250, width: 100, height: PLATFORM_HEIGHT}
-            ];
+            platforms = [...level.platforms];
+            enemies = [...level.enemies];
+            coins = [...level.coins];
             
-            enemies = [
-                {x: 300, y: canvas.height - ENEMY_SIZE - PLATFORM_HEIGHT, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
-                {x: 700, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2}
-            ];
-            
-            coins = [
-                {x: 250, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
-                {x: 450, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
-                {x: 650, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
-                {x: 850, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false}
-            ];
+            // Add ground platform
+            platforms.push({
+                x: 0, 
+                y: canvas.height - PLATFORM_HEIGHT, 
+                width: level.length, 
+                height: PLATFORM_HEIGHT
+            });
             
             score = 0;
             cameraX = 0;
             scoreElement.textContent = `Score: ${score}`;
+            levelNameElement.textContent = level.name;
             gameOverElement.style.display = 'none';
             gameRunning = true;
-            lastJumpTime = 0;
-            jumpBuffered = false;
+            canJump = true;
+            
+            // Adjust difficulty
+            adjustDifficulty();
             
             // Start game loop
             gameLoop();
+        }
+        
+        // Adjust game difficulty
+        function adjustDifficulty() {
+            switch(difficulty) {
+                case 'easy':
+                    enemies.forEach(e => e.speed = 1.5);
+                    break;
+                case 'normal':
+                    enemies.forEach(e => e.speed = 2);
+                    break;
+                case 'hard':
+                    enemies.forEach(e => e.speed = 2.5);
+                    break;
+            }
         }
         
         // Game loop
@@ -210,6 +760,8 @@
         
         // Update game state
         function update() {
+            const level = levels[currentLevel];
+            
             // Mario movement
             mario.velocityX = 0;
             
@@ -222,57 +774,47 @@
                 mario.facingRight = true;
             }
             
-            // Apply gravity if not on ground
-            if (!mario.onGround) {
-                mario.velocityY += GRAVITY;
-            } else {
-                mario.velocityY = 0;
+            // Apply gravity
+            mario.velocityY += GRAVITY;
+            
+            // Handle jumping
+            if (keys.jump && !mario.isJumping) {
+                mario.velocityY = JUMP_FORCE;
+                mario.isJumping = true;
+                canJump = false;
             }
             
             // Update position
             mario.x += mario.velocityX;
             mario.y += mario.velocityY;
             
-            // Reset ground state before collision checks
-            mario.onGround = false;
+            // Reset jump state before collision detection
+            mario.isJumping = true;
             
             // Platform collision
+            let onGround = false;
             for (const platform of platforms) {
                 if (checkCollision(mario, platform)) {
-                    // Calculate overlap on each side
-                    const bottomOverlap = Math.abs((mario.y + mario.height/2) - platform.y);
-                    const topOverlap = Math.abs((mario.y - mario.height/2) - (platform.y + platform.height));
-                    const leftOverlap = Math.abs((mario.x + mario.width/2) - platform.x);
-                    const rightOverlap = Math.abs((mario.x - mario.width/2) - (platform.x + platform.width));
-                    
-                    // Find smallest overlap
-                    const minOverlap = Math.min(bottomOverlap, topOverlap, leftOverlap, rightOverlap);
-                    
                     // Top collision (landing on platform)
-                    if (minOverlap === bottomOverlap && mario.velocityY > 0) {
-                        mario.y = platform.y - mario.height/2;
+                    if (mario.velocityY > 0 && mario.y + mario.height/2 < platform.y + 10) {
+                        mario.y = platform.y - mario.height;
                         mario.velocityY = 0;
                         mario.isJumping = false;
-                        mario.onGround = true;
-                        
-                        // Check if we have a buffered jump
-                        if (jumpBuffered) {
-                            doJump();
-                            jumpBuffered = false;
-                        }
+                        onGround = true;
+                        canJump = true;
                     }
                     // Bottom collision (hitting head)
-                    else if (minOverlap === topOverlap && mario.velocityY < 0) {
-                        mario.y = platform.y + platform.height + mario.height/2;
+                    else if (mario.velocityY < 0) {
+                        mario.y = platform.y + platform.height;
                         mario.velocityY = 0;
                     }
-                    // Left collision
-                    else if (minOverlap === leftOverlap) {
-                        mario.x = platform.x - mario.width/2;
-                    }
-                    // Right collision
-                    else if (minOverlap === rightOverlap) {
-                        mario.x = platform.x + platform.width + mario.width/2;
+                    // Side collision
+                    else if (mario.velocityX !== 0) {
+                        if (mario.velocityX > 0) {
+                            mario.x = platform.x - mario.width;
+                        } else {
+                            mario.x = platform.x + platform.width;
+                        }
                     }
                 }
             }
@@ -324,7 +866,13 @@
             
             // Camera follow
             cameraX = mario.x - canvas.width / 3;
-            cameraX = Math.max(0, Math.min(cameraX, levelWidth - canvas.width));
+            cameraX = Math.max(0, Math.min(cameraX, level.length - canvas.width));
+            
+            // Check if Mario reached the end
+            if (mario.x > level.length - 100) {
+                levelComplete();
+                return;
+            }
             
             // Check if Mario fell off the world
             if (mario.y > canvas.height + 100) {
@@ -332,43 +880,61 @@
             }
         }
         
-        // Perform jump action
-        function doJump() {
-            mario.velocityY = JUMP_FORCE;
-            mario.isJumping = true;
-            mario.onGround = false;
-            lastJumpTime = Date.now();
-        }
-        
-        // Handle jump input
-        function handleJump() {
-            const now = Date.now();
+        // Level complete
+        function levelComplete() {
+            gameRunning = false;
+            gameOverElement.style.display = 'flex';
+            finalScoreElement.textContent = `Level Complete! Score: ${score}`;
+            restartBtn.textContent = "Next Level";
             
-            if (mario.onGround) {
-                doJump();
-            } else {
-                // Buffer the jump if pressed within the buffer window
-                if (now - lastJumpTime < JUMP_BUFFER_TIME) {
-                    jumpBuffered = true;
+            // Unlock next level if available
+            if (currentLevel < 5) {
+                const nextLevelBtn = document.querySelector(`.level-btn[data-level="${currentLevel + 1}"]`);
+                if (nextLevelBtn) {
+                    nextLevelBtn.classList.remove('disabled');
                 }
             }
         }
         
         // Draw game
         function draw() {
+            const level = levels[currentLevel];
+            
             // Clear canvas
             ctx.fillStyle = '#1e1e1e';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
-            // Draw sky gradient
+            // Draw sky gradient based on level
             const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
-            skyGradient.addColorStop(0, '#4d88ff');
-            skyGradient.addColorStop(1, '#1e1e1e');
+            
+            switch(currentLevel) {
+                case 1: // Mushroom Plains
+                    skyGradient.addColorStop(0, '#4d88ff');
+                    skyGradient.addColorStop(1, '#1e1e1e');
+                    break;
+                case 2: // Desert Hills
+                    skyGradient.addColorStop(0, '#ff8844');
+                    skyGradient.addColorStop(1, '#1e1e1e');
+                    break;
+                case 3: // Snowy Peaks
+                    skyGradient.addColorStop(0, '#88ccff');
+                    skyGradient.addColorStop(1, '#1e1e1e');
+                    break;
+                case 4: // Lava Caverns
+                    skyGradient.addColorStop(0, '#ff4444');
+                    skyGradient.addColorStop(1, '#1e1e1e');
+                    break;
+                case 5: // Cloud Kingdom
+                    skyGradient.addColorStop(0, '#ffffff');
+                    skyGradient.addColorStop(1, '#88ccff');
+                    break;
+            }
+            
             ctx.fillStyle = skyGradient;
             ctx.fillRect(0, 0, canvas.width, canvas.height);
             
             // Draw platforms (only those in view)
-            ctx.fillStyle = '#44aa44';
+            ctx.fillStyle = currentLevel === 3 ? '#ffffff' : '#44aa44'; // White for snow level
             platforms.forEach(platform => {
                 if (platform.x + platform.width > cameraX && platform.x < cameraX + canvas.width) {
                     ctx.fillRect(
@@ -437,77 +1003,99 @@
             );
         }
         
+        // Make Mario jump
+        function jump() {
+            if (!gameRunning) {
+                startGame();
+            } else {
+                keys.jump = true;
+            }
+        }
+        
+        function stopJump() {
+            keys.jump = false;
+        }
+        
         // Check for collisions between two objects
         function checkCollision(obj1, obj2) {
-            return obj1.x + obj1.width/2 > obj2.x &&
-                   obj1.x - obj1.width/2 < obj2.x + obj2.width &&
-                   obj1.y + obj1.height/2 > obj2.y &&
-                   obj1.y - obj1.height/2 < obj2.y + obj2.height;
+            return obj1.x < obj2.x + obj2.width &&
+                   obj1.x + obj1.width > obj2.x &&
+                   obj1.y < obj2.y + obj2.height &&
+                   obj1.y + obj1.height > obj2.y;
         }
         
         // Game over
         function gameOver() {
             gameRunning = false;
-            cancelAnimationFrame(animationFrameId);
             gameOverElement.style.display = 'flex';
-            finalScoreElement.textContent = `Score: ${score}`;
+            finalScoreElement.textContent = `Final Score: ${score}`;
+            restartBtn.textContent = "Try Again";
+        }
+        
+        // Start the game
+        function startGame() {
+            menu.style.display = 'none';
+            canvas.style.display = 'block';
+            scoreElement.style.display = 'block';
+            levelNameElement.style.display = 'block';
+            backBtn.style.display = 'block';
+            document.getElementById('controls').style.display = 'flex';
+            gameOverElement.style.display = 'none';
+            
+            // Get settings
+            difficulty = document.getElementById('difficulty').value;
+            
+            initGame();
+        }
+        
+        // Back to menu
+        function backToMenu() {
+            gameRunning = false;
+            menu.style.display = 'flex';
+            canvas.style.display = 'none';
+            scoreElement.style.display = 'none';
+            levelNameElement.style.display = 'none';
+            backBtn.style.display = 'none';
+            document.getElementById('controls').style.display = 'none';
+            gameOverElement.style.display = 'none';
         }
         
         // Event listeners for buttons
-        leftBtn.addEventListener('touchstart', () => {
-            keys.left = true;
-            keys.right = false;
-        });
+        document.getElementById('left-btn').addEventListener('touchstart', () => keys.left = true);
+        document.getElementById('left-btn').addEventListener('touchend', () => keys.left = false);
+        document.getElementById('right-btn').addEventListener('touchstart', () => keys.right = true);
+        document.getElementById('right-btn').addEventListener('touchend', () => keys.right = false);
+        document.getElementById('jump-btn').addEventListener('touchstart', jump);
+        document.getElementById('jump-btn').addEventListener('touchend', stopJump);
         
-        leftBtn.addEventListener('touchend', () => {
-            keys.left = false;
-        });
-        
-        rightBtn.addEventListener('touchstart', () => {
-            keys.right = true;
-            keys.left = false;
-        });
-        
-        rightBtn.addEventListener('touchend', () => {
-            keys.right = false;
-        });
-        
-        jumpBtn.addEventListener('touchstart', () => {
-            keys.jump = true;
-            handleJump();
-        });
-        
-        jumpBtn.addEventListener('touchend', () => {
-            keys.jump = false;
-        });
-        
-        // Keyboard controls
         document.addEventListener('keydown', (e) => {
-            if (e.key === 'ArrowLeft') {
-                keys.left = true;
-            } else if (e.key === 'ArrowRight') {
-                keys.right = true;
-            } else if (e.code === 'Space' || e.key === ' ') {
-                keys.jump = true;
-                handleJump();
-            }
+            if (e.key === 'ArrowLeft') keys.left = true;
+            if (e.key === 'ArrowRight') keys.right = true;
+            if (e.key === ' ' || e.key === 'ArrowUp') jump();
         });
         
         document.addEventListener('keyup', (e) => {
-            if (e.key === 'ArrowLeft') {
-                keys.left = false;
-            } else if (e.key === 'ArrowRight') {
-                keys.right = false;
-            } else if (e.code === 'Space' || e.key === ' ') {
-                keys.jump = false;
-            }
+            if (e.key === 'ArrowLeft') keys.left = false;
+            if (e.key === 'ArrowRight') keys.right = false;
+            if (e.key === ' ' || e.key === 'ArrowUp') stopJump();
         });
         
-        // Restart button
-        restartBtn.addEventListener('click', initGame);
+        // Level selection
+        levelButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                levelButtons.forEach(b => b.classList.remove('selected'));
+                btn.classList.add('selected');
+                currentLevel = parseInt(btn.dataset.level);
+            });
+        });
         
-        // Start the game
-        initGame();
+        playBtn.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        backBtn.addEventListener('click', backToMenu);
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Initialize
+        resizeCanvas();
     </script>
 </body>
 </html>
