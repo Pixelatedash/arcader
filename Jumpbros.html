@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Mario</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #121212;
+            touch-action: manipulation;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #4d88ff;
+            background: #1e1e1e;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 20px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+        .control-btn {
+            width: 80px;
+            height: 60px;
+            background: rgba(77, 136, 255, 0.3);
+            border: 2px solid #4d88ff;
+            border-radius: 10px;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .control-btn:active {
+            background: rgba(77, 136, 255, 0.6);
+        }
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 36px;
+        }
+        #restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #4d88ff;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Score: 0</div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="controls">
+        <div class="control-btn" id="left-btn">←</div>
+        <div class="control-btn" id="right-btn">→</div>
+        <div class="control-btn" id="jump-btn">↑</div>
+    </div>
+    
+    <div id="game-over">
+        Game Over!
+        <div id="final-score"></div>
+        <button id="restart-btn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverElement = document.getElementById('game-over');
+        const finalScoreElement = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+        const leftBtn = document.getElementById('left-btn');
+        const rightBtn = document.getElementById('right-btn');
+        const jumpBtn = document.getElementById('jump-btn');
+        
+        // Game settings
+        const MARIO_WIDTH = 30;
+        const MARIO_HEIGHT = 50;
+        const PLATFORM_HEIGHT = 20;
+        const ENEMY_SIZE = 40;
+        const COIN_SIZE = 20;
+        const GRAVITY = 0.8;
+        const JUMP_FORCE = -15;
+        const MOVE_SPEED = 5;
+        const JUMP_BUFFER_TIME = 100; // milliseconds to buffer jump input
+        
+        // Game variables
+        let mario;
+        let platforms = [];
+        let enemies = [];
+        let coins = [];
+        let score = 0;
+        let gameRunning = false;
+        let cameraX = 0;
+        let levelWidth = 3000;
+        let keys = {
+            left: false,
+            right: false,
+            jump: false
+        };
+        let animationFrameId;
+        let lastJumpTime = 0;
+        let jumpBuffered = false;
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight) * 0.9;
+            canvas.width = size;
+            canvas.height = size * 0.6;
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Initialize game
+        function initGame() {
+            // Cancel any existing animation frame
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            mario = {
+                x: 100,
+                y: 100,
+                width: MARIO_WIDTH,
+                height: MARIO_HEIGHT,
+                velocityX: 0,
+                velocityY: 0,
+                isJumping: true,
+                facingRight: true,
+                onGround: false
+            };
+            
+            platforms = [
+                {x: 0, y: canvas.height - PLATFORM_HEIGHT, width: levelWidth, height: PLATFORM_HEIGHT}, // Ground
+                {x: 200, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                {x: 400, y: 250, width: 100, height: PLATFORM_HEIGHT},
+                {x: 600, y: 200, width: 100, height: PLATFORM_HEIGHT},
+                {x: 800, y: 300, width: 100, height: PLATFORM_HEIGHT},
+                {x: 1000, y: 250, width: 100, height: PLATFORM_HEIGHT}
+            ];
+            
+            enemies = [
+                {x: 300, y: canvas.height - ENEMY_SIZE - PLATFORM_HEIGHT, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2},
+                {x: 700, y: 230, width: ENEMY_SIZE, height: ENEMY_SIZE, direction: 1, speed: 2}
+            ];
+            
+            coins = [
+                {x: 250, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                {x: 450, y: 200, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                {x: 650, y: 150, width: COIN_SIZE, height: COIN_SIZE, collected: false},
+                {x: 850, y: 250, width: COIN_SIZE, height: COIN_SIZE, collected: false}
+            ];
+            
+            score = 0;
+            cameraX = 0;
+            scoreElement.textContent = `Score: ${score}`;
+            gameOverElement.style.display = 'none';
+            gameRunning = true;
+            lastJumpTime = 0;
+            jumpBuffered = false;
+            
+            // Start game loop
+            gameLoop();
+        }
+        
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            update();
+            draw();
+            
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+        
+        // Update game state
+        function update() {
+            // Mario movement
+            mario.velocityX = 0;
+            
+            if (keys.left) {
+                mario.velocityX = -MOVE_SPEED;
+                mario.facingRight = false;
+            }
+            if (keys.right) {
+                mario.velocityX = MOVE_SPEED;
+                mario.facingRight = true;
+            }
+            
+            // Apply gravity if not on ground
+            if (!mario.onGround) {
+                mario.velocityY += GRAVITY;
+            } else {
+                mario.velocityY = 0;
+            }
+            
+            // Update position
+            mario.x += mario.velocityX;
+            mario.y += mario.velocityY;
+            
+            // Reset ground state before collision checks
+            mario.onGround = false;
+            
+            // Platform collision
+            for (const platform of platforms) {
+                if (checkCollision(mario, platform)) {
+                    // Calculate overlap on each side
+                    const bottomOverlap = Math.abs((mario.y + mario.height/2) - platform.y);
+                    const topOverlap = Math.abs((mario.y - mario.height/2) - (platform.y + platform.height));
+                    const leftOverlap = Math.abs((mario.x + mario.width/2) - platform.x);
+                    const rightOverlap = Math.abs((mario.x - mario.width/2) - (platform.x + platform.width));
+                    
+                    // Find smallest overlap
+                    const minOverlap = Math.min(bottomOverlap, topOverlap, leftOverlap, rightOverlap);
+                    
+                    // Top collision (landing on platform)
+                    if (minOverlap === bottomOverlap && mario.velocityY > 0) {
+                        mario.y = platform.y - mario.height/2;
+                        mario.velocityY = 0;
+                        mario.isJumping = false;
+                        mario.onGround = true;
+                        
+                        // Check if we have a buffered jump
+                        if (jumpBuffered) {
+                            doJump();
+                            jumpBuffered = false;
+                        }
+                    }
+                    // Bottom collision (hitting head)
+                    else if (minOverlap === topOverlap && mario.velocityY < 0) {
+                        mario.y = platform.y + platform.height + mario.height/2;
+                        mario.velocityY = 0;
+                    }
+                    // Left collision
+                    else if (minOverlap === leftOverlap) {
+                        mario.x = platform.x - mario.width/2;
+                    }
+                    // Right collision
+                    else if (minOverlap === rightOverlap) {
+                        mario.x = platform.x + platform.width + mario.width/2;
+                    }
+                }
+            }
+            
+            // Enemy movement and collision
+            for (let i = enemies.length - 1; i >= 0; i--) {
+                const enemy = enemies[i];
+                
+                // Simple back-and-forth movement
+                enemy.x += enemy.direction * enemy.speed;
+                
+                // Check if enemy should turn around
+                let shouldTurn = false;
+                for (const platform of platforms) {
+                    if (enemy.x <= platform.x || enemy.x + enemy.width >= platform.x + platform.width) {
+                        shouldTurn = true;
+                        break;
+                    }
+                }
+                
+                if (shouldTurn) {
+                    enemy.direction *= -1;
+                }
+                
+                // Check collision with Mario
+                if (checkCollision(mario, enemy)) {
+                    // Mario jumps on enemy
+                    if (mario.velocityY > 0 && mario.y + mario.height/2 < enemy.y + 10) {
+                        enemies.splice(i, 1);
+                        mario.velocityY = JUMP_FORCE * 0.7;
+                        score += 100;
+                        scoreElement.textContent = `Score: ${score}`;
+                    } else {
+                        gameOver();
+                        return;
+                    }
+                }
+            }
+            
+            // Coin collection
+            for (let i = coins.length - 1; i >= 0; i--) {
+                const coin = coins[i];
+                if (!coin.collected && checkCollision(mario, coin)) {
+                    coin.collected = true;
+                    score += 50;
+                    scoreElement.textContent = `Score: ${score}`;
+                }
+            }
+            
+            // Camera follow
+            cameraX = mario.x - canvas.width / 3;
+            cameraX = Math.max(0, Math.min(cameraX, levelWidth - canvas.width));
+            
+            // Check if Mario fell off the world
+            if (mario.y > canvas.height + 100) {
+                gameOver();
+            }
+        }
+        
+        // Perform jump action
+        function doJump() {
+            mario.velocityY = JUMP_FORCE;
+            mario.isJumping = true;
+            mario.onGround = false;
+            lastJumpTime = Date.now();
+        }
+        
+        // Handle jump input
+        function handleJump() {
+            const now = Date.now();
+            
+            if (mario.onGround) {
+                doJump();
+            } else {
+                // Buffer the jump if pressed within the buffer window
+                if (now - lastJumpTime < JUMP_BUFFER_TIME) {
+                    jumpBuffered = true;
+                }
+            }
+        }
+        
+        // Draw game
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw sky gradient
+            const skyGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+            skyGradient.addColorStop(0, '#4d88ff');
+            skyGradient.addColorStop(1, '#1e1e1e');
+            ctx.fillStyle = skyGradient;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw platforms (only those in view)
+            ctx.fillStyle = '#44aa44';
+            platforms.forEach(platform => {
+                if (platform.x + platform.width > cameraX && platform.x < cameraX + canvas.width) {
+                    ctx.fillRect(
+                        platform.x - cameraX, 
+                        platform.y, 
+                        platform.width, 
+                        platform.height
+                    );
+                }
+            });
+            
+            // Draw coins
+            coins.forEach(coin => {
+                if (!coin.collected && coin.x + coin.width > cameraX && coin.x < cameraX + canvas.width) {
+                    ctx.fillStyle = '#ffff00';
+                    ctx.beginPath();
+                    ctx.arc(
+                        coin.x - cameraX + coin.width/2, 
+                        coin.y + coin.height/2, 
+                        coin.width/2, 
+                        0, 
+                        Math.PI * 2
+                    );
+                    ctx.fill();
+                }
+            });
+            
+            // Draw enemies
+            ctx.fillStyle = '#ff4444';
+            enemies.forEach(enemy => {
+                if (enemy.x + enemy.width > cameraX && enemy.x < cameraX + canvas.width) {
+                    ctx.fillRect(
+                        enemy.x - cameraX, 
+                        enemy.y, 
+                        enemy.width, 
+                        enemy.height
+                    );
+                }
+            });
+            
+            // Draw Mario
+            ctx.fillStyle = mario.facingRight ? '#ff4444' : '#ff0000';
+            ctx.fillRect(
+                mario.x - cameraX - mario.width/2, 
+                mario.y - mario.height/2, 
+                mario.width, 
+                mario.height
+            );
+            
+            // Draw Mario's hat
+            ctx.fillStyle = '#ff0000';
+            ctx.fillRect(
+                mario.x - cameraX - mario.width/2, 
+                mario.y - mario.height/2 - 10, 
+                mario.width, 
+                10
+            );
+            
+            // Draw Mario's mustache
+            ctx.fillStyle = '#000000';
+            ctx.fillRect(
+                mario.x - cameraX - mario.width/2 + 5, 
+                mario.y - mario.height/2 + 20, 
+                mario.width - 10, 
+                5
+            );
+        }
+        
+        // Check for collisions between two objects
+        function checkCollision(obj1, obj2) {
+            return obj1.x + obj1.width/2 > obj2.x &&
+                   obj1.x - obj1.width/2 < obj2.x + obj2.width &&
+                   obj1.y + obj1.height/2 > obj2.y &&
+                   obj1.y - obj1.height/2 < obj2.y + obj2.height;
+        }
+        
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            cancelAnimationFrame(animationFrameId);
+            gameOverElement.style.display = 'flex';
+            finalScoreElement.textContent = `Score: ${score}`;
+        }
+        
+        // Event listeners for buttons
+        leftBtn.addEventListener('touchstart', () => {
+            keys.left = true;
+            keys.right = false;
+        });
+        
+        leftBtn.addEventListener('touchend', () => {
+            keys.left = false;
+        });
+        
+        rightBtn.addEventListener('touchstart', () => {
+            keys.right = true;
+            keys.left = false;
+        });
+        
+        rightBtn.addEventListener('touchend', () => {
+            keys.right = false;
+        });
+        
+        jumpBtn.addEventListener('touchstart', () => {
+            keys.jump = true;
+            handleJump();
+        });
+        
+        jumpBtn.addEventListener('touchend', () => {
+            keys.jump = false;
+        });
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') {
+                keys.left = true;
+            } else if (e.key === 'ArrowRight') {
+                keys.right = true;
+            } else if (e.code === 'Space' || e.key === ' ') {
+                keys.jump = true;
+                handleJump();
+            }
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft') {
+                keys.left = false;
+            } else if (e.key === 'ArrowRight') {
+                keys.right = false;
+            } else if (e.code === 'Space' || e.key === ' ') {
+                keys.jump = false;
+            }
+        });
+        
+        // Restart button
+        restartBtn.addEventListener('click', initGame);
+        
+        // Start the game
+        initGame();
+    </script>
+</body>
+</html>

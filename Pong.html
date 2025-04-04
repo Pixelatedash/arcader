@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Pong</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #121212;
+            touch-action: manipulation;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        canvas {
+            border: 2px solid #4d88ff;
+            background: #1e1e1e;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            color: white;
+            font-size: 20px;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+        }
+        .control-btn {
+            width: 80px;
+            height: 60px;
+            background: rgba(77, 136, 255, 0.3);
+            border: 2px solid #4d88ff;
+            border-radius: 10px;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .control-btn:active {
+            background: rgba(77, 136, 255, 0.6);
+        }
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 36px;
+        }
+        #restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #4d88ff;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="score">Player: 0 - Computer: 0</div>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="controls">
+        <div class="control-btn" id="up-btn">↑</div>
+        <div class="control-btn" id="down-btn">↓</div>
+    </div>
+    
+    <div id="game-over">
+        Game Over!
+        <div id="winner"></div>
+        <button id="restart-btn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const gameOverElement = document.getElementById('game-over');
+        const winnerElement = document.getElementById('winner');
+        const restartBtn = document.getElementById('restart-btn');
+        
+        // Game settings
+        const PADDLE_WIDTH = 15;
+        const PADDLE_HEIGHT = 100;
+        const BALL_SIZE = 15;
+        const WIN_SCORE = 5;
+        
+        // Game variables
+        let player = { x: 0, y: 0, score: 0 };
+        let computer = { x: 0, y: 0, score: 0 };
+        let ball = { x: 0, y: 0, speedX: 0, speedY: 0 };
+        let gameRunning = false;
+        let animationFrameId;
+        let keys = { up: false, down: false };
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight) * 0.9;
+            canvas.width = size;
+            canvas.height = size * 0.8;
+            initGame();
+        }
+        
+        // Initialize game
+        function initGame() {
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+            }
+            
+            player = {
+                x: 10,
+                y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+                score: 0
+            };
+            
+            computer = {
+                x: canvas.width - PADDLE_WIDTH - 10,
+                y: canvas.height / 2 - PADDLE_HEIGHT / 2,
+                score: 0
+            };
+            
+            resetBall();
+            
+            gameOverElement.style.display = 'none';
+            gameRunning = true;
+            updateScore();
+            
+            gameLoop();
+        }
+        
+        // Reset ball
+        function resetBall() {
+            ball = {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                speedX: 5 * (Math.random() > 0.5 ? 1 : -1),
+                speedY: 3 * (Math.random() > 0.5 ? 1 : -1)
+            };
+        }
+        
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            update();
+            draw();
+            
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+        
+        // Update game state
+        function update() {
+            // Player paddle movement
+            if (keys.up && player.y > 0) {
+                player.y -= 8;
+            }
+            if (keys.down && player.y < canvas.height - PADDLE_HEIGHT) {
+                player.y += 8;
+            }
+            
+            // Computer AI (simple follow)
+            const computerPaddleCenter = computer.y + PADDLE_HEIGHT / 2;
+            if (computerPaddleCenter < ball.y - 15) {
+                computer.y += 5;
+            } else if (computerPaddleCenter > ball.y + 15) {
+                computer.y -= 5;
+            }
+            
+            // Keep computer paddle on screen
+            if (computer.y < 0) computer.y = 0;
+            if (computer.y > canvas.height - PADDLE_HEIGHT) computer.y = canvas.height - PADDLE_HEIGHT;
+            
+            // Move ball
+            ball.x += ball.speedX;
+            ball.y += ball.speedY;
+            
+            // Ball collision with top and bottom
+            if (ball.y <= 0 || ball.y >= canvas.height - BALL_SIZE) {
+                ball.speedY = -ball.speedY;
+            }
+            
+            // Ball collision with paddles
+            if (
+                ball.x <= player.x + PADDLE_WIDTH &&
+                ball.x >= player.x &&
+                ball.y + BALL_SIZE >= player.y &&
+                ball.y <= player.y + PADDLE_HEIGHT
+            ) {
+                const hitPos = (ball.y - (player.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
+                const angle = hitPos * Math.PI / 4;
+                ball.speedX = Math.cos(angle) * 7;
+                ball.speedY = Math.sin(angle) * 7;
+            }
+            
+            if (
+                ball.x + BALL_SIZE >= computer.x &&
+                ball.x + BALL_SIZE <= computer.x + PADDLE_WIDTH &&
+                ball.y + BALL_SIZE >= computer.y &&
+                ball.y <= computer.y + PADDLE_HEIGHT
+            ) {
+                const hitPos = (ball.y - (computer.y + PADDLE_HEIGHT / 2)) / (PADDLE_HEIGHT / 2);
+                const angle = hitPos * Math.PI / 4;
+                ball.speedX = -Math.cos(angle) * 7;
+                ball.speedY = Math.sin(angle) * 7;
+            }
+            
+            // Score points
+            if (ball.x < 0) {
+                computer.score++;
+                updateScore();
+                resetBall();
+            }
+            
+            if (ball.x > canvas.width) {
+                player.score++;
+                updateScore();
+                resetBall();
+            }
+            
+            // Check for winner
+            if (player.score >= WIN_SCORE || computer.score >= WIN_SCORE) {
+                gameOver();
+            }
+        }
+        
+        // Draw game
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw center line
+            ctx.strokeStyle = '#4d88ff';
+            ctx.setLineDash([10, 10]);
+            ctx.beginPath();
+            ctx.moveTo(canvas.width / 2, 0);
+            ctx.lineTo(canvas.width / 2, canvas.height);
+            ctx.stroke();
+            ctx.setLineDash([]);
+            
+            // Draw paddles
+            ctx.fillStyle = '#4d88ff';
+            ctx.fillRect(player.x, player.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+            ctx.fillRect(computer.x, computer.y, PADDLE_WIDTH, PADDLE_HEIGHT);
+            
+            // Draw ball
+            ctx.fillStyle = '#ffffff';
+            ctx.beginPath();
+            ctx.arc(ball.x + BALL_SIZE / 2, ball.y + BALL_SIZE / 2, BALL_SIZE / 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        // Update score
+        function updateScore() {
+            scoreElement.textContent = `Player: ${player.score} - Computer: ${computer.score}`;
+        }
+        
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            gameOverElement.style.display = 'flex';
+            winnerElement.textContent = player.score > computer.score ? 'You Win!' : 'Computer Wins!';
+        }
+        
+        // Event listeners
+        document.getElementById('up-btn').addEventListener('touchstart', () => keys.up = true);
+        document.getElementById('up-btn').addEventListener('touchend', () => keys.up = false);
+        document.getElementById('down-btn').addEventListener('touchstart', () => keys.down = true);
+        document.getElementById('down-btn').addEventListener('touchend', () => keys.down = false);
+        
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') keys.up = true;
+            if (e.key === 'ArrowDown') keys.down = true;
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp') keys.up = false;
+            if (e.key === 'ArrowDown') keys.down = false;
+        });
+        
+        restartBtn.addEventListener('click', initGame);
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Start the game
+        resizeCanvas();
+    </script>
+</body>
+</html>

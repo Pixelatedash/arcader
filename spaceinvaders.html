@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Space Invaders</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background: #121212;
+            overflow: hidden;
+            touch-action: none;
+        }
+        canvas {
+            border: 2px solid #4d88ff;
+            background: #000;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        #game-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+        }
+        #controls {
+            position: absolute;
+            bottom: 20px;
+            display: flex;
+            justify-content: center;
+            width: 100%;
+            gap: 20px;
+        }
+        .control-btn {
+            width: 80px;
+            height: 80px;
+            background: rgba(77, 136, 255, 0.3);
+            border: 2px solid #4d88ff;
+            border-radius: 50%;
+            color: white;
+            font-size: 24px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .control-btn:active {
+            background: rgba(77, 136, 255, 0.6);
+        }
+        #game-over {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-family: Arial, sans-serif;
+            font-size: 36px;
+        }
+        #restart-btn {
+            margin-top: 20px;
+            padding: 10px 20px;
+            background: #4d88ff;
+            border: none;
+            border-radius: 5px;
+            color: white;
+            font-size: 18px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-info">
+        <div>Score: <span id="score">0</span></div>
+        <div>Lives: <span id="lives">3</span></div>
+    </div>
+    
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="controls">
+        <div class="control-btn" id="left-btn">←</div>
+        <div class="control-btn" id="shoot-btn">🔫</div>
+        <div class="control-btn" id="right-btn">→</div>
+    </div>
+    
+    <div id="game-over">
+        Game Over!
+        <div>Final Score: <span id="final-score">0</span></div>
+        <button id="restart-btn">Play Again</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const gameOverElement = document.getElementById('game-over');
+        const finalScoreElement = document.getElementById('final-score');
+        const restartBtn = document.getElementById('restart-btn');
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const width = Math.min(window.innerWidth, 800);
+            const height = Math.min(window.innerHeight * 0.8, 600);
+            canvas.width = width;
+            canvas.height = height;
+        }
+        
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Game variables
+        const playerWidth = 50;
+        const playerHeight = 20;
+        let playerX = canvas.width / 2 - playerWidth / 2;
+        const playerY = canvas.height - 40;
+        let playerSpeed = 8;
+        let playerDirection = 0;
+        
+        const bulletWidth = 4;
+        const bulletHeight = 10;
+        let bullets = [];
+        const bulletSpeed = 10;
+        
+        const enemyRows = 4;
+        const enemyCols = 8;
+        const enemyWidth = 40;
+        const enemyHeight = 30;
+        let enemies = [];
+        let enemySpeed = 1;
+        let enemyDirection = 1;
+        let enemyDropDistance = 20;
+        
+        let score = 0;
+        let lives = 3;
+        let gameOver = false;
+        
+        // Initialize enemies
+        function initEnemies() {
+            enemies = [];
+            const padding = 20;
+            const startX = (canvas.width - (enemyCols * (enemyWidth + padding))) / 2;
+            
+            for (let row = 0; row < enemyRows; row++) {
+                for (let col = 0; col < enemyCols; col++) {
+                    enemies.push({
+                        x: startX + col * (enemyWidth + padding),
+                        y: 50 + row * (enemyHeight + padding),
+                        width: enemyWidth,
+                        height: enemyHeight,
+                        alive: true
+                    });
+                }
+            }
+        }
+        
+        // Draw player
+        function drawPlayer() {
+            ctx.fillStyle = '#4d88ff';
+            ctx.fillRect(playerX, playerY, playerWidth, playerHeight);
+            
+            // Draw player cannon
+            ctx.fillStyle = '#3a70d6';
+            ctx.fillRect(
+                playerX + playerWidth / 2 - bulletWidth / 2, 
+                playerY - bulletHeight, 
+                bulletWidth, 
+                bulletHeight
+            );
+        }
+        
+        // Draw bullets
+        function drawBullets() {
+            ctx.fillStyle = '#ff4444';
+            bullets.forEach(bullet => {
+                ctx.fillRect(bullet.x, bullet.y, bullet.width, bullet.height);
+            });
+        }
+        
+        // Draw enemies
+        function drawEnemies() {
+            ctx.fillStyle = '#4CAF50';
+            enemies.forEach(enemy => {
+                if (enemy.alive) {
+                    ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                    
+                    // Draw enemy eyes
+                    ctx.fillStyle = '#000';
+                    ctx.fillRect(enemy.x + 10, enemy.y + 10, 8, 8);
+                    ctx.fillRect(enemy.x + enemy.width - 18, enemy.y + 10, 8, 8);
+                    ctx.fillStyle = '#4CAF50';
+                }
+            });
+        }
+        
+        // Update player position
+        function updatePlayer() {
+            playerX += playerDirection * playerSpeed;
+            
+            // Boundary checking
+            if (playerX < 0) playerX = 0;
+            if (playerX > canvas.width - playerWidth) playerX = canvas.width - playerWidth;
+        }
+        
+        // Update bullets
+        function updateBullets() {
+            // Move bullets
+            bullets.forEach(bullet => {
+                bullet.y -= bulletSpeed;
+            });
+            
+            // Remove bullets that are off screen
+            bullets = bullets.filter(bullet => bullet.y > -bulletHeight);
+            
+            // Check for collisions with enemies
+            bullets.forEach((bullet, bulletIndex) => {
+                enemies.forEach((enemy, enemyIndex) => {
+                    if (
+                        enemy.alive &&
+                        bullet.x < enemy.x + enemy.width &&
+                        bullet.x + bullet.width > enemy.x &&
+                        bullet.y < enemy.y + enemy.height &&
+                        bullet.y + bullet.height > enemy.y
+                    ) {
+                        // Hit!
+                        enemy.alive = false;
+                        bullets.splice(bulletIndex, 1);
+                        score += 10;
+                        scoreElement.textContent = score;
+                        
+                        // Check if all enemies are dead
+                        if (enemies.every(e => !e.alive)) {
+                            levelUp();
+                        }
+                    }
+                });
+            });
+        }
+        
+        // Update enemies
+        function updateEnemies() {
+            let moveDown = false;
+            
+            // Check if any enemy has hit the edge
+            enemies.forEach(enemy => {
+                if (enemy.alive) {
+                    if (
+                        (enemy.x + enemy.width > canvas.width && enemyDirection > 0) ||
+                        (enemy.x < 0 && enemyDirection < 0)
+                    ) {
+                        moveDown = true;
+                    }
+                }
+            });
+            
+            if (moveDown) {
+                enemyDirection *= -1;
+                enemies.forEach(enemy => {
+                    if (enemy.alive) {
+                        enemy.y += enemyDropDistance;
+                        
+                        // Check if enemy reached bottom (game over)
+                        if (enemy.y + enemy.height > playerY) {
+                            lives = 0;
+                            checkGameOver();
+                        }
+                    }
+                });
+            } else {
+                enemies.forEach(enemy => {
+                    if (enemy.alive) {
+                        enemy.x += enemySpeed * enemyDirection;
+                    }
+                });
+            }
+        }
+        
+        // Level up
+        function levelUp() {
+            initEnemies();
+            enemySpeed += 0.5;
+        }
+        
+        // Check game over
+        function checkGameOver() {
+            if (lives <= 0) {
+                gameOver = true;
+                finalScoreElement.textContent = score;
+                gameOverElement.style.display = 'flex';
+            }
+        }
+        
+        // Shoot bullet
+        function shoot() {
+            if (gameOver) return;
+            
+            bullets.push({
+                x: playerX + playerWidth / 2 - bulletWidth / 2,
+                y: playerY - bulletHeight,
+                width: bulletWidth,
+                height: bulletHeight
+            });
+        }
+        
+        // Main game loop
+        function gameLoop() {
+            if (gameOver) return;
+            
+            // Clear canvas
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Update game state
+            updatePlayer();
+            updateBullets();
+            updateEnemies();
+            
+            // Draw game objects
+            drawEnemies();
+            drawBullets();
+            drawPlayer();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Start new game
+        function startGame() {
+            playerX = canvas.width / 2 - playerWidth / 2;
+            bullets = [];
+            score = 0;
+            lives = 3;
+            enemySpeed = 1;
+            enemyDirection = 1;
+            gameOver = false;
+            
+            scoreElement.textContent = '0';
+            livesElement.textContent = '3';
+            gameOverElement.style.display = 'none';
+            
+            initEnemies();
+            gameLoop();
+        }
+        
+        // Event listeners for controls
+        document.getElementById('left-btn').addEventListener('touchstart', () => {
+            playerDirection = -1;
+        });
+        
+        document.getElementById('left-btn').addEventListener('touchend', () => {
+            if (playerDirection === -1) playerDirection = 0;
+        });
+        
+        document.getElementById('right-btn').addEventListener('touchstart', () => {
+            playerDirection = 1;
+        });
+        
+        document.getElementById('right-btn').addEventListener('touchend', () => {
+            if (playerDirection === 1) playerDirection = 0;
+        });
+        
+        document.getElementById('shoot-btn').addEventListener('touchstart', () => {
+            shoot();
+        });
+        
+        // Keyboard controls
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft') playerDirection = -1;
+            if (e.key === 'ArrowRight') playerDirection = 1;
+            if (e.key === ' ') shoot();
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowLeft' && playerDirection === -1) playerDirection = 0;
+            if (e.key === 'ArrowRight' && playerDirection === 1) playerDirection = 0;
+        });
+        
+        // Touch controls for movement
+        let touchStartX = 0;
+        
+        canvas.addEventListener('touchstart', (e) => {
+            touchStartX = e.touches[0].clientX;
+            e.preventDefault();
+        }, {passive: false});
+        
+        canvas.addEventListener('touchmove', (e) => {
+            if (!touchStartX) return;
+            
+            const touchX = e.touches[0].clientX;
+            const diff = touchX - touchStartX;
+            
+            if (Math.abs(diff) > 10) {
+                playerDirection = diff > 0 ? 1 : -1;
+            }
+            
+            e.preventDefault();
+        }, {passive: false});
+        
+        canvas.addEventListener('touchend', () => {
+            playerDirection = 0;
+            touchStartX = 0;
+        });
+        
+        // Restart button
+        restartBtn.addEventListener('click', startGame);
+        
+        // Start the game
+        startGame();
+    </script>
+</body>
+</html>
