@@ -29,15 +29,25 @@ steps to play my games
 
    B3313: clB3313.html 
 Banjo-Kazooie: clbanjokazooie.html
+
 Banjo-Tooie: clbanjotooie.html 
+
 Diddy Kong Racing: cldiddykongracing.html 
+
 Donkey Kong 64: cldonkeykong64.html 
+
 Doom 64: cldoom64.html 
+
 Excitebike 64: clexcitebike64.html 
+
 FIFA 99: clFIFA99.html 
+
 FIFA World Cup 98: clworldcup98.html  
+
 F-zero X: clfzerox.html 
+
 Glover: clglover.html 
+
 Goldeneye 007: clgoldeneye007.html
 Harvest Moon 64: clharvestmoon64.html 
 Jet Force Gemini: cljetforcegemini.html 
