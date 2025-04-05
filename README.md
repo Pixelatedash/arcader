@@ -18,3 +18,7 @@ steps to play my games
    1. find some 
    2. follow steps for mine
  
+
+
+#About arcader
+Arcader is a project ive been working one that is like emulator js it is ment to be able to do alot more like veiw and play html files, bookmarklets, and roms. its a very fun project to do most of the time for making it went to the games it self. i have tested it with some of emulator js's html games and they do work i have also tested it with some of my html projects like T.H.B.B and terminus if you think i should improve something let me know but otherwise enjoy.
