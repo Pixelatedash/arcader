@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TouchPaper - Authentic Paperboy Clone</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #000;
+            touch-action: none;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+            font-family: 'Courier New', monospace;
+        }
+        #gameCanvas {
+            display: block;
+            margin: 0 auto;
+            background-color: #6b8cff;
+            image-rendering: pixelated;
+        }
+        #touchControls {
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            box-sizing: border-box;
+        }
+        .touch-btn {
+            width: 80px;
+            height: 80px;
+            background-color: rgba(255, 255, 255, 0.2);
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            touch-action: none;
+        }
+        #gameOver {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border: 4px solid white;
+            text-align: center;
+            display: none;
+        }
+        #startScreen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #000;
+            color: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+        #startButton {
+            margin-top: 30px;
+            padding: 10px 20px;
+            background-color: #f00;
+            color: white;
+            border: none;
+            font-size: 20px;
+            cursor: pointer;
+        }
+        #hud {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-size: 16px;
+            text-shadow: 2px 2px 0 #000;
+        }
+        #paperCount {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            color: white;
+            font-size: 16px;
+            text-shadow: 2px 2px 0 #000;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    
+    <div id="hud">
+        <div>SCORE: <span id="scoreDisplay">0</span></div>
+        <div>LIVES: <span id="livesDisplay">3</span></div>
+        <div>DAY: <span id="dayDisplay">1</span> of 7</div>
+        <div>DELIVERIES: <span id="deliveriesDisplay">0</span></div>
+    </div>
+    
+    <div id="paperCount">PAPERS: <span id="papersLeft">10</span></div>
+    
+    <div id="touchControls">
+        <div class="touch-btn" id="upBtn">↑</div>
+        <div class="touch-btn" id="downBtn">↓</div>
+    </div>
+    
+    <div id="gameOver">
+        <h1>GAME OVER</h1>
+        <p>FINAL SCORE: <span id="finalScore">0</span></p>
+        <p>PERFECT DELIVERIES: <span id="finalDeliveries">0</span></p>
+        <button id="restartBtn">PLAY AGAIN</button>
+    </div>
+    
+    <div id="startScreen">
+        <h1 style="color:red;font-size:48px;margin-bottom:20px;">TOUCHPAPER</h1>
+        <p style="font-size:18px;max-width:80%;margin:10px auto;">
+            DELIVER PAPERS TO SUBSCRIBERS!<br>
+            AVOID OBSTACLES AND VANDALS!
+        </p>
+        <div style="margin:20px 0;border:2px solid white;padding:10px;text-align:left;max-width:80%;">
+            <p>↑↓ = Move up/down</p>
+            <p>Papers deliver automatically when aligned</p>
+            <p>Blue doors = Subscribers</p>
+            <p>Red doors = Non-subscribers</p>
+        </div>
+        <button id="startButton">START DELIVERY</button>
+    </div>
+
+    <script>
+        // Game setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const startButton = document.getElementById('startButton');
+        const gameOverScreen = document.getElementById('gameOver');
+        const finalScoreDisplay = document.getElementById('finalScore');
+        const finalDeliveriesDisplay = document.getElementById('finalDeliveries');
+        const restartBtn = document.getElementById('restartBtn');
+        const papersLeftDisplay = document.getElementById('papersLeft');
+        
+        // HUD elements
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const livesDisplay = document.getElementById('livesDisplay');
+        const dayDisplay = document.getElementById('dayDisplay');
+        const deliveriesDisplay = document.getElementById('deliveriesDisplay');
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const size = Math.min(window.innerWidth, window.innerHeight * 1.5);
+            canvas.width = 320;
+            canvas.height = 240;
+            canvas.style.width = size + 'px';
+            canvas.style.height = (size * (240/320)) + 'px';
+        }
+        resizeCanvas();
+        window.addEventListener('resize', resizeCanvas);
+        
+        // Game state
+        let gameRunning = false;
+        let score = 0;
+        let lives = 3;
+        let day = 1;
+        let deliveries = 0;
+        let papersLeft = 10;
+        let gameSpeed = 1.5;
+        let cameraX = 0;
+        let deliveryCooldown = 0;
+        
+        // Player
+        const player = {
+            x: 50,
+            y: canvas.height / 2,
+            width: 16,
+            height: 24,
+            speed: 3,
+            movingUp: false,
+            movingDown: false,
+            bikeAngle: 0
+        };
+        
+        // Game elements
+        const houses = [];
+        const obstacles = [];
+        const enemies = [];
+        const activePapers = [];
+        
+        // Initialize game elements
+        function initLevel() {
+            houses.length = 0;
+            obstacles.length = 0;
+            enemies.length = 0;
+            activePapers.length = 0;
+            papersLeft = 10;
+            updateHUD();
+            
+            // Create houses along the street
+            const houseCount = 15;
+            for (let i = 0; i < houseCount; i++) {
+                const isSubscriber = Math.random() < 0.4;
+                const hasObstacle = Math.random() < 0.3;
+                const houseX = 500 + i * 200 + Math.random() * 100;
+                
+                houses.push({
+                    x: houseX,
+                    y: canvas.height - 60,
+                    width: 48,
+                    height: 60,
+                    doorColor: isSubscriber ? '#55F' : '#A22',
+                    hit: false,
+                    subscriber: isSubscriber
+                });
+                
+                // Add obstacles in front of some houses
+                if (hasObstacle) {
+                    const obstacleType = Math.random() < 0.5 ? 'trashcan' : 'lawnmower';
+                    obstacles.push({
+                        x: houseX + 10,
+                        y: canvas.height - 40,
+                        width: 20,
+                        height: 20,
+                        type: obstacleType,
+                        speed: obstacleType === 'lawnmower' ? 0.5 : 0
+                    });
+                }
+            }
+            
+            // Add some moving enemies (vandals)
+            for (let i = 0; i < 3; i++) {
+                enemies.push({
+                    x: 600 + i * 400 + Math.random() * 200,
+                    y: canvas.height - 40,
+                    width: 16,
+                    height: 24,
+                    speed: 1 + Math.random(),
+                    direction: Math.random() < 0.5 ? 1 : -1
+                });
+            }
+        }
+        
+        // Touch controls
+        const upBtn = document.getElementById('upBtn');
+        const downBtn = document.getElementById('downBtn');
+        
+        upBtn.addEventListener('touchstart', () => { player.movingUp = true; });
+        upBtn.addEventListener('touchend', () => { player.movingUp = false; });
+        upBtn.addEventListener('mousedown', () => { player.movingUp = true; });
+        upBtn.addEventListener('mouseup', () => { player.movingUp = false; });
+        
+        downBtn.addEventListener('touchstart', () => { player.movingDown = true; });
+        downBtn.addEventListener('touchend', () => { player.movingDown = false; });
+        downBtn.addEventListener('mousedown', () => { player.movingDown = true; });
+        downBtn.addEventListener('mouseup', () => { player.movingDown = false; });
+        
+        // Keyboard controls for testing
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowUp') player.movingUp = true;
+            if (e.key === 'ArrowDown') player.movingDown = true;
+        });
+        
+        document.addEventListener('keyup', (e) => {
+            if (e.key === 'ArrowUp') player.movingUp = false;
+            if (e.key === 'ArrowDown') player.movingDown = false;
+        });
+        
+        // Start game
+        startButton.addEventListener('click', startGame);
+        restartBtn.addEventListener('click', startGame);
+        
+        function startGame() {
+            score = 0;
+            lives = 3;
+            day = 1;
+            deliveries = 0;
+            gameSpeed = 1.5;
+            cameraX = 0;
+            initLevel();
+            gameRunning = true;
+            startScreen.style.display = 'none';
+            gameOverScreen.style.display = 'none';
+            updateHUD();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Game loop
+        function gameLoop() {
+            if (!gameRunning) return;
+            
+            update();
+            render();
+            
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // Update game state
+        function update() {
+            // Move player
+            if (player.movingUp) player.y = Math.max(40, player.y - player.speed);
+            if (player.movingDown) player.y = Math.min(canvas.height - 20, player.y + player.speed);
+            
+            // Animate bike
+            player.bikeAngle = (player.bikeAngle + 0.2) % (Math.PI * 2);
+            
+            // Handle delivery cooldown
+            if (deliveryCooldown > 0) {
+                deliveryCooldown--;
+            }
+            
+            // Automatic paper delivery when aligned with houses
+            if (papersLeft > 0 && deliveryCooldown === 0) {
+                const deliveryY = player.y + 12; // Delivery point (near bike's front)
+                
+                // Check if we're aligned with any house
+                for (let j = 0; j < houses.length; j++) {
+                    const house = houses[j];
+                    const houseScreenX = house.x - cameraX;
+                    
+                    // Check if house is in delivery range (horizontally)
+                    if (houseScreenX > player.x + player.width && 
+                        houseScreenX < player.x + player.width + 30 &&
+                        !house.hit) {
+                        
+                        // Check vertical alignment (for porch delivery)
+                        if (deliveryY >= house.y && deliveryY <= house.y + house.height) {
+                            deliverPaper(house);
+                            deliveryCooldown = 10; // Small cooldown between deliveries
+                            break;
+                        }
+                    }
+                }
+            }
+            
+            // Scroll world
+            cameraX += gameSpeed;
+            
+            // Update active papers (visual effects only)
+            for (let i = activePapers.length - 1; i >= 0; i--) {
+                const paper = activePapers[i];
+                paper.timer--;
+                if (paper.timer <= 0) {
+                    activePapers.splice(i, 1);
+                }
+            }
+            
+            // Update obstacles
+            for (let i = 0; i < obstacles.length; i++) {
+                obstacles[i].x -= gameSpeed + obstacles[i].speed;
+                
+                // Check collision with player
+                if (checkCollision(player, obstacles[i])) {
+                    lives--;
+                    obstacles[i].x = -100; // Move off screen
+                    updateHUD();
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+            
+            // Update enemies
+            for (let i = 0; i < enemies.length; i++) {
+                enemies[i].x -= gameSpeed;
+                enemies[i].x += enemies[i].speed * enemies[i].direction;
+                
+                // Change direction randomly
+                if (Math.random() < 0.01) {
+                    enemies[i].direction *= -1;
+                }
+                
+                // Check collision with player
+                if (checkCollision(player, enemies[i])) {
+                    lives--;
+                    enemies[i].x = -100; // Move off screen
+                    updateHUD();
+                    if (lives <= 0) {
+                        gameOver();
+                    }
+                }
+            }
+            
+            // Check level completion
+            const subscriberHouses = houses.filter(h => h.subscriber);
+            const deliveredToAll = subscriberHouses.every(h => h.hit) && subscriberHouses.length > 0;
+            
+            if (deliveredToAll || cameraX > 500 + 200 * 15) {
+                day++;
+                if (day > 7) {
+                    // Week completed!
+                    score += 1000;
+                    day = 1;
+                    gameSpeed += 0.5;
+                }
+                cameraX = 0;
+                initLevel();
+                updateHUD();
+            }
+        }
+        
+        // Handle paper delivery
+        function deliverPaper(house) {
+            papersLeft--;
+            
+            // Create visual paper effect
+            activePapers.push({
+                x: house.x + 20,
+                y: house.y + house.height - 10,
+                width: 8,
+                height: 4,
+                timer: 60 // Frames to display
+            });
+            
+            if (house.subscriber) {
+                score += 100;
+                deliveries++;
+                house.hit = true;
+            } else {
+                score -= 50;
+            }
+            
+            updateHUD();
+        }
+        
+        // Render game
+        function render() {
+            // Clear canvas
+            ctx.fillStyle = '#6b8cff'; // Sky blue
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw road
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0, canvas.height - 20, canvas.width, 20);
+            
+            // Draw sidewalk
+            ctx.fillStyle = '#AAA';
+            ctx.fillRect(0, canvas.height - 40, canvas.width, 20);
+            
+            // Draw houses (only visible ones)
+            const visibleHouses = houses.filter(h => h.x >= cameraX - 100 && h.x <= cameraX + canvas.width);
+            for (const house of visibleHouses) {
+                const screenX = house.x - cameraX;
+                
+                // House body
+                ctx.fillStyle = '#D22';
+                ctx.fillRect(screenX, house.y, house.width, house.height);
+                
+                // Roof
+                ctx.fillStyle = '#333';
+                ctx.beginPath();
+                ctx.moveTo(screenX - 5, house.y);
+                ctx.lineTo(screenX + house.width / 2, house.y - 15);
+                ctx.lineTo(screenX + house.width + 5, house.y);
+                ctx.closePath();
+                ctx.fill();
+                
+                // Door
+                ctx.fillStyle = house.doorColor;
+                ctx.fillRect(screenX + 12, house.y + house.height - 24, 24, 24);
+                
+                // Window
+                ctx.fillStyle = '#FF9';
+                ctx.fillRect(screenX + 8, house.y + 10, 10, 10);
+                ctx.fillRect(screenX + 30, house.y + 10, 10, 10);
+                
+                // If hit, show newspaper
+                if (house.hit) {
+                    ctx.fillStyle = '#FFF';
+                    ctx.fillRect(screenX + 20, house.y + house.height - 15, 16, 8);
+                }
+            }
+            
+            // Draw obstacles
+            const visibleObstacles = obstacles.filter(o => o.x >= cameraX - 50 && o.x <= cameraX + canvas.width);
+            for (const obstacle of visibleObstacles) {
+                const screenX = obstacle.x - cameraX;
+                
+                if (obstacle.type === 'trashcan') {
+                    // Trashcan
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(screenX, obstacle.y, obstacle.width, obstacle.height);
+                    ctx.fillStyle = '#666';
+                    ctx.fillRect(screenX + 2, obstacle.y + 2, obstacle.width - 4, 4);
+                } else {
+                    // Lawnmower
+                    ctx.fillStyle = '#6A6';
+                    ctx.fillRect(screenX, obstacle.y, obstacle.width, obstacle.height);
+                    ctx.fillStyle = '#333';
+                    ctx.fillRect(screenX + 4, obstacle.y + 4, obstacle.width - 8, 8);
+                }
+            }
+            
+            // Draw enemies
+            const visibleEnemies = enemies.filter(e => e.x >= cameraX - 50 && e.x <= cameraX + canvas.width);
+            for (const enemy of visibleEnemies) {
+                const screenX = enemy.x - cameraX;
+                
+                // Enemy (vandal)
+                ctx.fillStyle = '#A00';
+                ctx.fillRect(screenX, enemy.y, enemy.width, enemy.height);
+                
+                // Face
+                ctx.fillStyle = '#000';
+                ctx.fillRect(screenX + 4, enemy.y + 6, 8, 4);
+            }
+            
+            // Draw active papers (delivery effects)
+            ctx.fillStyle = '#FFF';
+            for (const paper of activePapers) {
+                const screenX = paper.x - cameraX;
+                if (screenX >= -10 && screenX <= canvas.width + 10) {
+                    // Make paper "flutter" down
+                    const offsetY = Math.sin(paper.timer * 0.1) * 2;
+                    ctx.fillRect(screenX, paper.y + offsetY, paper.width, paper.height);
+                }
+            }
+            
+            // Draw player (bike)
+            const bikeX = player.x;
+            const bikeY = player.y;
+            
+            // Bike frame
+            ctx.fillStyle = '#F00';
+            ctx.fillRect(bikeX, bikeY, player.width, player.height);
+            
+            // Wheels
+            ctx.fillStyle = '#000';
+            // Front wheel
+            ctx.beginPath();
+            ctx.arc(
+                bikeX + 12, 
+                bikeY + 18, 
+                6, 
+                0, 
+                Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Spokes
+            ctx.strokeStyle = '#FFF';
+            ctx.lineWidth = 1;
+            for (let i = 0; i < 4; i++) {
+                const angle = player.bikeAngle + (i * Math.PI/2);
+                ctx.beginPath();
+                ctx.moveTo(bikeX + 12, bikeY + 18);
+                ctx.lineTo(
+                    bikeX + 12 + Math.cos(angle) * 6,
+                    bikeY + 18 + Math.sin(angle) * 6
+                );
+                ctx.stroke();
+            }
+            
+            // Back wheel
+            ctx.fillStyle = '#000';
+            ctx.beginPath();
+            ctx.arc(
+                bikeX + 4, 
+                bikeY + 18, 
+                6, 
+                0, 
+                Math.PI * 2
+            );
+            ctx.fill();
+            
+            // Spokes
+            for (let i = 0; i < 4; i++) {
+                const angle = player.bikeAngle + (i * Math.PI/2);
+                ctx.beginPath();
+                ctx.moveTo(bikeX + 4, bikeY + 18);
+                ctx.lineTo(
+                    bikeX + 4 + Math.cos(angle) * 6,
+                    bikeY + 18 + Math.sin(angle) * 6
+                );
+                ctx.stroke();
+            }
+            
+            // Handlebar
+            ctx.fillStyle = '#000';
+            ctx.fillRect(bikeX + 10, bikeY + 6, 6, 2);
+            
+            // Paper bag (on bike)
+            ctx.fillStyle = '#FFF';
+            ctx.fillRect(bikeX + 2, bikeY + 4, 6, 8);
+        }
+        
+        // Collision detection
+        function checkCollision(obj1, obj2) {
+            return obj1.x < obj2.x + obj2.width &&
+                   obj1.x + obj1.width > obj2.x &&
+                   obj1.y < obj2.y + obj2.height &&
+                   obj1.y + obj1.height > obj2.y;
+        }
+        
+        // Update HUD
+        function updateHUD() {
+            scoreDisplay.textContent = score;
+            livesDisplay.textContent = lives;
+            dayDisplay.textContent = day;
+            deliveriesDisplay.textContent = deliveries;
+            papersLeftDisplay.textContent = papersLeft;
+        }
+        
+        // Game over
+        function gameOver() {
+            gameRunning = false;
+            finalScoreDisplay.textContent = score;
+            finalDeliveriesDisplay.textContent = deliveries;
+            gameOverScreen.style.display = 'block';
+        }
+    </script>
+</body>
+</html>
