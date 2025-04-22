@@ -90,19 +90,22 @@
         let pacman = {
             x: 280,
             y: 460,
-            radius: 10,
+            radius: 8,  // Slightly smaller to fit better
             speed: PACMAN_SPEED,
             direction: 'right',
             nextDirection: 'right',
+            targetX: 280,
+            targetY: 460,
+            moving: false,
             mouthAngle: 0,
             mouthOpen: true
         };
         
         const ghosts = [
-            { x: 260, y: 220, color: 'red', direction: 'up', name: 'Blinky' },
-            { x: 280, y: 220, color: 'pink', direction: 'up', name: 'Pinky' },
-            { x: 300, y: 220, color: 'cyan', direction: 'up', name: 'Inky' },
-            { x: 260, y: 260, color: 'orange', direction: 'up', name: 'Clyde' }
+            { x: 260, y: 220, color: 'red', direction: 'up', targetX: 260, targetY: 220, moving: false, name: 'Blinky' },
+            { x: 280, y: 220, color: 'pink', direction: 'up', targetX: 280, targetY: 220, moving: false, name: 'Pinky' },
+            { x: 300, y: 220, color: 'cyan', direction: 'up', targetX: 300, targetY: 220, moving: false, name: 'Inky' },
+            { x: 260, y: 260, color: 'orange', direction: 'up', targetX: 260, targetY: 260, moving: false, name: 'Clyde' }
         ];
         
         // Maze layout (1 = wall, 0 = path, 2 = dot, 3 = power pellet, 4 = cherry)
@@ -178,159 +181,172 @@
             }
         }
         
-        // Move Pac-Man
+        // Move Pac-Man with grid alignment
         function movePacman() {
-            // Try to change direction if possible
-            if (pacman.nextDirection !== pacman.direction) {
-                const nextX = Math.round(pacman.x / TILE_SIZE);
-                const nextY = Math.round(pacman.y / TILE_SIZE);
+            const currentTileX = Math.round(pacman.x / TILE_SIZE);
+            const currentTileY = Math.round(pacman.y / TILE_SIZE);
+            
+            // Check if Pac-Man is centered on a tile
+            const isCentered = 
+                Math.abs(pacman.x - currentTileX * TILE_SIZE) < pacman.speed && 
+                Math.abs(pacman.y - currentTileY * TILE_SIZE) < pacman.speed;
+            
+            // If centered or not moving, check for direction change
+            if (isCentered || !pacman.moving) {
+                pacman.x = currentTileX * TILE_SIZE;
+                pacman.y = currentTileY * TILE_SIZE;
                 
-                let canChange = false;
-                
-                switch (pacman.nextDirection) {
-                    case 'up':
-                        if (maze[nextY - 1] && maze[nextY - 1][nextX] !== 1) canChange = true;
-                        break;
-                    case 'down':
-                        if (maze[nextY + 1] && maze[nextY + 1][nextX] !== 1) canChange = true;
-                        break;
-                    case 'left':
-                        if (maze[nextY][nextX - 1] !== 1) canChange = true;
-                        break;
-                    case 'right':
-                        if (maze[nextY][nextX + 1] !== 1) canChange = true;
-                        break;
+                // Try to change direction if possible
+                if (pacman.nextDirection !== pacman.direction) {
+                    let canChange = false;
+                    const nextTileX = currentTileX + (pacman.nextDirection === 'left' ? -1 : pacman.nextDirection === 'right' ? 1 : 0);
+                    const nextTileY = currentTileY + (pacman.nextDirection === 'up' ? -1 : pacman.nextDirection === 'down' ? 1 : 0);
+                    
+                    if (maze[nextTileY] && maze[nextTileY][nextTileX] !== 1) {
+                        canChange = true;
+                    }
+                    
+                    if (canChange) {
+                        pacman.direction = pacman.nextDirection;
+                        pacman.moving = true;
+                    }
                 }
                 
-                if (canChange) {
-                    pacman.direction = pacman.nextDirection;
+                // Check if can continue in current direction
+                const nextTileX = currentTileX + (pacman.direction === 'left' ? -1 : pacman.direction === 'right' ? 1 : 0);
+                const nextTileY = currentTileY + (pacman.direction === 'up' ? -1 : pacman.direction === 'down' ? 1 : 0);
+                
+                if (maze[nextTileY] && maze[nextTileY][nextTileX] !== 1) {
+                    pacman.moving = true;
+                    pacman.targetX = nextTileX * TILE_SIZE;
+                    pacman.targetY = nextTileY * TILE_SIZE;
+                } else {
+                    pacman.moving = false;
                 }
             }
             
-            // Move based on current direction
-            let newX = pacman.x;
-            let newY = pacman.y;
-            
-            switch (pacman.direction) {
-                case 'up':
-                    newY -= pacman.speed;
-                    break;
-                case 'down':
-                    newY += pacman.speed;
-                    break;
-                case 'left':
-                    newX -= pacman.speed;
-                    break;
-                case 'right':
-                    newX += pacman.speed;
-                    break;
-            }
-            
-            // Check wall collisions
-            const tileX = Math.round(newX / TILE_SIZE);
-            const tileY = Math.round(newY / TILE_SIZE);
-            
-            if (maze[tileY][tileX] !== 1) {
-                pacman.x = newX;
-                pacman.y = newY;
+            // Move toward target position
+            if (pacman.moving) {
+                const dx = pacman.targetX - pacman.x;
+                const dy = pacman.targetY - pacman.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > pacman.speed) {
+                    pacman.x += (dx / dist) * pacman.speed;
+                    pacman.y += (dy / dist) * pacman.speed;
+                } else {
+                    pacman.x = pacman.targetX;
+                    pacman.y = pacman.targetY;
+                }
             }
             
             // Wrap around tunnel
-            if (pacman.x < 0) pacman.x = canvas.width;
-            if (pacman.x > canvas.width) pacman.x = 0;
+            if (pacman.x < -pacman.radius) pacman.x = canvas.width;
+            if (pacman.x > canvas.width) pacman.x = -pacman.radius;
             
             // Check if Pac-Man is on a dot
             checkDotCollision();
         }
         
-        // Move ghost
+        // Move ghost with grid alignment
         function moveGhost(ghost) {
-            const directions = ['up', 'down', 'left', 'right'];
-            const oppositeDir = {
-                'up': 'down',
-                'down': 'up',
-                'left': 'right',
-                'right': 'left'
-            };
+            const currentTileX = Math.round(ghost.x / TILE_SIZE);
+            const currentTileY = Math.round(ghost.y / TILE_SIZE);
             
-            // Get current tile
-            const tileX = Math.round(ghost.x / TILE_SIZE);
-            const tileY = Math.round(ghost.y / TILE_SIZE);
+            // Check if ghost is centered on a tile
+            const isCentered = 
+                Math.abs(ghost.x - currentTileX * TILE_SIZE) < GHOST_SPEED && 
+                Math.abs(ghost.y - currentTileY * TILE_SIZE) < GHOST_SPEED;
             
-            // Check if at intersection or needs to change direction
-            let validDirections = [];
-            
-            directions.forEach(dir => {
-                if (dir !== oppositeDir[ghost.direction]) {
-                    switch (dir) {
-                        case 'up':
-                            if (maze[tileY - 1] && maze[tileY - 1][tileX] !== 1) validDirections.push(dir);
-                            break;
-                        case 'down':
-                            if (maze[tileY + 1] && maze[tileY + 1][tileX] !== 1) validDirections.push(dir);
-                            break;
-                        case 'left':
-                            if (maze[tileY][tileX - 1] !== 1) validDirections.push(dir);
-                            break;
-                        case 'right':
-                            if (maze[tileY][tileX + 1] !== 1) validDirections.push(dir);
-                            break;
+            // If centered or not moving, decide next direction
+            if (isCentered || !ghost.moving) {
+                ghost.x = currentTileX * TILE_SIZE;
+                ghost.y = currentTileY * TILE_SIZE;
+                
+                const directions = ['up', 'down', 'left', 'right'];
+                const oppositeDir = {
+                    'up': 'down',
+                    'down': 'up',
+                    'left': 'right',
+                    'right': 'left'
+                };
+                
+                // Get valid directions (not into walls and not reversing)
+                let validDirections = [];
+                
+                directions.forEach(dir => {
+                    if (dir !== oppositeDir[ghost.direction]) {
+                        const nextTileX = currentTileX + (dir === 'left' ? -1 : dir === 'right' ? 1 : 0);
+                        const nextTileY = currentTileY + (dir === 'up' ? -1 : dir === 'down' ? 1 : 0);
+                        
+                        if (maze[nextTileY] && maze[nextTileY][nextTileX] !== 1) {
+                            validDirections.push(dir);
+                        }
                     }
-                }
-            });
-            
-            // If at intersection, choose new direction (simple AI: move toward Pac-Man)
-            if (validDirections.length > 1 || 
-                (Math.abs(ghost.x - Math.round(ghost.x / TILE_SIZE) * TILE_SIZE) < 2 && 
-                 Math.abs(ghost.y - Math.round(ghost.y / TILE_SIZE) * TILE_SIZE) < 2)) {
+                });
                 
-                // Simple chase AI
-                const dx = pacman.x - ghost.x;
-                const dy = pacman.y - ghost.y;
-                
-                // Prioritize direction toward Pac-Man
-                let preferredDirections = [];
-                if (Math.abs(dx) > Math.abs(dy)) {
-                    preferredDirections.push(dx > 0 ? 'right' : 'left');
-                    preferredDirections.push(dy > 0 ? 'down' : 'up');
+                // If at intersection, choose new direction
+                if (validDirections.length > 0) {
+                    // Simple chase AI - move toward Pac-Man
+                    const dx = pacman.x - ghost.x;
+                    const dy = pacman.y - ghost.y;
+                    
+                    // Prioritize direction toward Pac-Man
+                    let preferredDirections = [];
+                    if (Math.abs(dx) > Math.abs(dy)) {
+                        preferredDirections.push(dx > 0 ? 'right' : 'left');
+                        preferredDirections.push(dy > 0 ? 'down' : 'up');
+                    } else {
+                        preferredDirections.push(dy > 0 ? 'down' : 'up');
+                        preferredDirections.push(dx > 0 ? 'right' : 'left');
+                    }
+                    
+                    // Find first preferred direction that's valid
+                    let newDir = ghost.direction; // Default to current direction if possible
+                    for (let dir of preferredDirections) {
+                        if (validDirections.includes(dir)) {
+                            newDir = dir;
+                            break;
+                        }
+                    }
+                    
+                    // If preferred direction not available, choose randomly
+                    if (!validDirections.includes(newDir)) {
+                        newDir = validDirections[Math.floor(Math.random() * validDirections.length)];
+                    }
+                    
+                    ghost.direction = newDir;
+                    ghost.moving = true;
+                    
+                    const nextTileX = currentTileX + (ghost.direction === 'left' ? -1 : ghost.direction === 'right' ? 1 : 0);
+                    const nextTileY = currentTileY + (ghost.direction === 'up' ? -1 : ghost.direction === 'down' ? 1 : 0);
+                    
+                    ghost.targetX = nextTileX * TILE_SIZE;
+                    ghost.targetY = nextTileY * TILE_SIZE;
                 } else {
-                    preferredDirections.push(dy > 0 ? 'down' : 'up');
-                    preferredDirections.push(dx > 0 ? 'right' : 'left');
-                }
-                
-                // Find first preferred direction that's valid
-                for (let dir of preferredDirections) {
-                    if (validDirections.includes(dir)) {
-                        ghost.direction = dir;
-                        break;
-                    }
-                }
-                
-                // If preferred direction not available, choose randomly
-                if (!validDirections.includes(ghost.direction)) {
-                    ghost.direction = validDirections[Math.floor(Math.random() * validDirections.length)];
+                    // No valid directions (shouldn't happen in proper maze)
+                    ghost.moving = false;
                 }
             }
             
-            // Move ghost
-            switch (ghost.direction) {
-                case 'up':
-                    ghost.y -= GHOST_SPEED;
-                    break;
-                case 'down':
-                    ghost.y += GHOST_SPEED;
-                    break;
-                case 'left':
-                    ghost.x -= GHOST_SPEED;
-                    break;
-                case 'right':
-                    ghost.x += GHOST_SPEED;
-                    break;
+            // Move toward target position
+            if (ghost.moving) {
+                const dx = ghost.targetX - ghost.x;
+                const dy = ghost.targetY - ghost.y;
+                const dist = Math.sqrt(dx * dx + dy * dy);
+                
+                if (dist > GHOST_SPEED) {
+                    ghost.x += (dx / dist) * GHOST_SPEED;
+                    ghost.y += (dy / dist) * GHOST_SPEED;
+                } else {
+                    ghost.x = ghost.targetX;
+                    ghost.y = ghost.targetY;
+                }
             }
             
             // Wrap around tunnel
-            if (ghost.x < 0) ghost.x = canvas.width;
-            if (ghost.x > canvas.width) ghost.x = 0;
+            if (ghost.x < -TILE_SIZE/2) ghost.x = canvas.width;
+            if (ghost.x > canvas.width) ghost.x = -TILE_SIZE/2;
         }
         
         // Check if Pac-Man is on a dot
@@ -346,7 +362,6 @@
                 maze[tileY][tileX] = 0;
                 score += POWER_PELLET_SCORE;
                 dotCount--;
-                // TODO: Implement frightened ghosts
             } else if (maze[tileY][tileX] === 4) { // Cherry
                 maze[tileY][tileX] = 0;
                 score += CHERRY_SCORE;
@@ -382,14 +397,17 @@
             // Reset Pac-Man
             pacman.x = 280;
             pacman.y = 460;
+            pacman.targetX = 280;
+            pacman.targetY = 460;
             pacman.direction = 'right';
             pacman.nextDirection = 'right';
+            pacman.moving = false;
             
             // Reset ghosts
-            ghosts[0].x = 260; ghosts[0].y = 220;
-            ghosts[1].x = 280; ghosts[1].y = 220;
-            ghosts[2].x = 300; ghosts[2].y = 220;
-            ghosts[3].x = 260; ghosts[3].y = 260;
+            ghosts[0].x = 260; ghosts[0].y = 220; ghosts[0].targetX = 260; ghosts[0].targetY = 220;
+            ghosts[1].x = 280; ghosts[1].y = 220; ghosts[1].targetX = 280; ghosts[1].targetY = 220;
+            ghosts[2].x = 300; ghosts[2].y = 220; ghosts[2].targetX = 300; ghosts[2].targetY = 220;
+            ghosts[3].x = 260; ghosts[3].y = 260; ghosts[3].targetX = 260; ghosts[3].targetY = 260;
             
             // Reset score
             score = 0;
@@ -441,10 +459,15 @@
                     if (maze[row][col] === 1) { // Wall
                         ctx.fillStyle = '#0000AA';
                         ctx.fillRect(x, y, TILE_SIZE, TILE_SIZE);
+                        
+                        // Add some decoration to walls
+                        ctx.strokeStyle = '#0000FF';
+                        ctx.lineWidth = 2;
+                        ctx.strokeRect(x + 2, y + 2, TILE_SIZE - 4, TILE_SIZE - 4);
                     } else if (maze[row][col] === 2) { // Dot
                         ctx.fillStyle = 'white';
                         ctx.beginPath();
-                        ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, 2, 0, Math.PI * 2);
+                        ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, 3, 0, Math.PI * 2);
                         ctx.fill();
                     } else if (maze[row][col] === 3) { // Power pellet
                         ctx.fillStyle = 'white';
@@ -452,6 +475,15 @@
                         ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, 6, 0, Math.PI * 2);
                         ctx.fill();
                     } else if (maze[row][col] === 4) { // Cherry
+                        // Draw cherry stem
+                        ctx.strokeStyle = 'green';
+                        ctx.lineWidth = 2;
+                        ctx.beginPath();
+                        ctx.moveTo(x + TILE_SIZE/2 - 2, y + TILE_SIZE/2 - 6);
+                        ctx.lineTo(x + TILE_SIZE/2 + 2, y + TILE_SIZE/2 - 10);
+                        ctx.stroke();
+                        
+                        // Draw cherry body
                         ctx.fillStyle = 'red';
                         ctx.beginPath();
                         ctx.arc(x + TILE_SIZE/2, y + TILE_SIZE/2, 6, 0, Math.PI * 2);
@@ -497,6 +529,19 @@
             ctx.arc(pacman.x, pacman.y, pacman.radius, startAngle, endAngle);
             ctx.lineTo(pacman.x, pacman.y);
             ctx.fill();
+            
+            // Add eye
+            ctx.fillStyle = 'black';
+            let eyeX = pacman.x, eyeY = pacman.y;
+            switch (pacman.direction) {
+                case 'right': eyeX += 3; eyeY -= 3; break;
+                case 'left': eyeX -= 3; eyeY -= 3; break;
+                case 'up': eyeY -= 3; break;
+                case 'down': eyeY += 3; break;
+            }
+            ctx.beginPath();
+            ctx.arc(eyeX, eyeY, 2, 0, Math.PI * 2);
+            ctx.fill();
         }
         
         // Draw ghost
@@ -540,8 +585,8 @@
             
             ctx.fillStyle = 'blue';
             ctx.beginPath();
-            ctx.arc(x - 4, y - 3, 1, 0, Math.PI * 2);
-            ctx.arc(x + 4, y - 3, 1, 0, Math.PI * 2);
+            ctx.arc(x - 4, y - 3, 1.5, 0, Math.PI * 2);
+            ctx.arc(x + 4, y - 3, 1.5, 0, Math.PI * 2);
             ctx.fill();
         }
         
