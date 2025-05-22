@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>HTML5 GTA-style Game with Touch</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #333;
+            touch-action: none;
+        }
+        canvas {
+            display: block;
+            background-color: #87CEEB; /* Sky blue */
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-shadow: 2px 2px 4px black;
+            pointer-events: none;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            font-family: Arial, sans-serif;
+            text-shadow: 2px 2px 4px black;
+            pointer-events: none;
+        }
+        #touchControls {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            width: 150px;
+            height: 150px;
+            pointer-events: none;
+        }
+        #joystick {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            bottom: 20px;
+            left: 20px;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        #joystickKnob {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+        }
+        #actionButtons {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            pointer-events: none;
+        }
+        .actionButton {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 20px;
+            pointer-events: auto;
+            touch-action: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div id="ui">
+        <div>Health: <span id="health">100</span>%</div>
+        <div>Money: $<span id="money">0</span></div>
+        <div>Vehicle: <span id="vehicle">On Foot</span></div>
+    </div>
+    <div id="instructions">
+        WASD/Joystick to move, E/Button to enter/exit, SPACE/Button to shoot
+    </div>
+    
+    <div id="joystick">
+        <div id="joystickKnob"></div>
+    </div>
+    
+    <div id="actionButtons">
+        <div id="enterButton" class="actionButton">E</div>
+        <div id="shootButton" class="actionButton">🔫</div>
+    </div>
+
+    <script>
+        // Game canvas setup
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        // Touch control elements
+        const joystick = document.getElementById('joystick');
+        const joystickKnob = document.getElementById('joystickKnob');
+        const enterButton = document.getElementById('enterButton');
+        const shootButton = document.getElementById('shootButton');
+
+        // Game state
+        const game = {
+            player: {
+                x: canvas.width / 2,
+                y: canvas.height / 2,
+                width: 20,
+                height: 20,
+                speed: 3,
+                health: 100,
+                money: 0,
+                inVehicle: false,
+                direction: 0 // angle in radians
+            },
+            vehicles: [],
+            buildings: [],
+            pedestrians: [],
+            bullets: [],
+            keys: {},
+            lastTime: 0,
+            touch: {
+                joystickActive: false,
+                joystickX: 0,
+                joystickY: 0,
+                joystickStartX: 0,
+                joystickStartY: 0,
+                joystickCenterX: 0,
+                joystickCenterY: 0,
+                enterButtonPressed: false,
+                shootButtonPressed: false
+            }
+        };
+
+        // Initialize game objects
+        function initGame() {
+            // Create some vehicles
+            for (let i = 0; i < 5; i++) {
+                game.vehicles.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    width: 40,
+                    height: 70,
+                    speed: 5 + Math.random() * 3,
+                    color: `hsl(${Math.random() * 360}, 70%, 50%)`,
+                    occupied: false,
+                    direction: Math.random() * Math.PI * 2
+                });
+            }
+
+            // Create some buildings
+            for (let i = 0; i < 10; i++) {
+                game.buildings.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    width: 80 + Math.random() * 120,
+                    height: 80 + Math.random() * 120,
+                    color: `hsl(${Math.random() * 60 + 200}, 30%, ${Math.random() * 20 + 40}%)`
+                });
+            }
+
+            // Create some pedestrians
+            for (let i = 0; i < 15; i++) {
+                game.pedestrians.push({
+                    x: Math.random() * canvas.width,
+                    y: Math.random() * canvas.height,
+                    width: 15,
+                    height: 15,
+                    speed: 1 + Math.random(),
+                    color: `hsl(${Math.random() * 360}, 70%, 60%)`,
+                    direction: Math.random() * Math.PI * 2,
+                    directionChangeTime: 0
+                });
+            }
+            
+            // Set joystick center position
+            const joystickRect = joystick.getBoundingClientRect();
+            game.touch.joystickCenterX = joystickRect.left + joystickRect.width / 2;
+            game.touch.joystickCenterY = joystickRect.top + joystickRect.height / 2;
+        }
+
+        // Handle keyboard input
+        window.addEventListener('keydown', (e) => {
+            game.keys[e.key.toLowerCase()] = true;
+            
+            // Enter/exit vehicle
+            if (e.key.toLowerCase() === 'e') {
+                if (game.player.inVehicle) {
+                    exitVehicle();
+                } else {
+                    tryEnterVehicle();
+                }
+            }
+            
+            // Shoot (only in vehicle)
+            if (e.key === ' ' && game.player.inVehicle) {
+                shoot();
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            game.keys[e.key.toLowerCase()] = false;
+        });
+
+        // Touch event handlers
+        joystick.addEventListener('touchstart', handleJoystickStart, { passive: false });
+        joystick.addEventListener('touchmove', handleJoystickMove, { passive: false });
+        joystick.addEventListener('touchend', handleJoystickEnd, { passive: false });
+        
+        enterButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            game.touch.enterButtonPressed = true;
+            if (game.player.inVehicle) {
+                exitVehicle();
+            } else {
+                tryEnterVehicle();
+            }
+        });
+        
+        enterButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            game.touch.enterButtonPressed = false;
+        });
+        
+        shootButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            game.touch.shootButtonPressed = true;
+            if (game.player.inVehicle) {
+                shoot();
+            }
+        });
+        
+        shootButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            game.touch.shootButtonPressed = false;
+        });
+
+        function handleJoystickStart(e) {
+            e.preventDefault();
+            game.touch.joystickActive = true;
+            const touch = e.touches[0];
+            game.touch.joystickStartX = touch.clientX;
+            game.touch.joystickStartY = touch.clientY;
+        }
+
+        function handleJoystickMove(e) {
+            if (!game.touch.joystickActive) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - game.touch.joystickStartX;
+            const deltaY = touch.clientY - game.touch.joystickStartY;
+            
+            // Limit joystick movement to the joystick area
+            const maxDistance = 40;
+            const distance = Math.min(maxDistance, Math.sqrt(deltaX * deltaX + deltaY * deltaY));
+            const angle = Math.atan2(deltaY, deltaX);
+            
+            game.touch.joystickX = Math.cos(angle) * distance;
+            game.touch.joystickY = Math.sin(angle) * distance;
+            
+            // Update joystick knob position
+            joystickKnob.style.transform = `translate(${game.touch.joystickX}px, ${game.touch.joystickY}px)`;
+        }
+
+        function handleJoystickEnd(e) {
+            e.preventDefault();
+            game.touch.joystickActive = false;
+            game.touch.joystickX = 0;
+            game.touch.joystickY = 0;
+            joystickKnob.style.transform = 'translate(0, 0)';
+        }
+
+        // Game loop
+        function gameLoop(timestamp) {
+            const deltaTime = timestamp - game.lastTime;
+            game.lastTime = timestamp;
+
+            update(deltaTime);
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        // Update game state
+        function update(deltaTime) {
+            // Update player
+            if (!game.player.inVehicle) {
+                // Player on foot movement
+                let moveX = 0;
+                let moveY = 0;
+                
+                // Keyboard controls
+                if (game.keys['w'] || game.keys['arrowup']) {
+                    moveY -= 1;
+                    game.player.direction = -Math.PI / 2;
+                }
+                if (game.keys['s'] || game.keys['arrowdown']) {
+                    moveY += 1;
+                    game.player.direction = Math.PI / 2;
+                }
+                if (game.keys['a'] || game.keys['arrowleft']) {
+                    moveX -= 1;
+                    game.player.direction = Math.PI;
+                }
+                if (game.keys['d'] || game.keys['arrowright']) {
+                    moveX += 1;
+                    game.player.direction = 0;
+                }
+                
+                // Touch controls
+                if (game.touch.joystickActive) {
+                    const joystickMagnitude = Math.sqrt(game.touch.joystickX * game.touch.joystickX + game.touch.joystickY * game.touch.joystickY);
+                    if (joystickMagnitude > 10) {
+                        moveX = game.touch.joystickX / 40;
+                        moveY = game.touch.joystickY / 40;
+                        game.player.direction = Math.atan2(moveY, moveX);
+                    }
+                }
+                
+                // Diagonal movement
+                if (moveX !== 0 && moveY !== 0) {
+                    const magnitude = Math.sqrt(moveX * moveX + moveY * moveY);
+                    moveX = moveX / magnitude;
+                    moveY = moveY / magnitude;
+                }
+                
+                game.player.x += moveX * game.player.speed;
+                game.player.y += moveY * game.player.speed;
+            } else {
+                // Player in vehicle movement
+                const vehicle = game.vehicles.find(v => v.occupied);
+                if (vehicle) {
+                    // Keyboard controls
+                    if (game.keys['w'] || game.keys['arrowup']) {
+                        vehicle.x += Math.cos(vehicle.direction) * vehicle.speed;
+                        vehicle.y += Math.sin(vehicle.direction) * vehicle.speed;
+                    }
+                    if (game.keys['s'] || game.keys['arrowdown']) {
+                        vehicle.x -= Math.cos(vehicle.direction) * (vehicle.speed * 0.5);
+                        vehicle.y -= Math.sin(vehicle.direction) * (vehicle.speed * 0.5);
+                    }
+                    if (game.keys['a'] || game.keys['arrowleft']) {
+                        vehicle.direction -= 0.05;
+                    }
+                    if (game.keys['d'] || game.keys['arrowright']) {
+                        vehicle.direction += 0.05;
+                    }
+                    
+                    // Touch controls
+                    if (game.touch.joystickActive) {
+                        const joystickMagnitude = Math.sqrt(game.touch.joystickX * game.touch.joystickX + game.touch.joystickY * game.touch.joystickY);
+                        if (joystickMagnitude > 10) {
+                            // Forward/backward
+                            if (Math.abs(game.touch.joystickY) > Math.abs(game.touch.joystickX)) {
+                                const speed = game.touch.joystickY < 0 ? vehicle.speed : vehicle.speed * 0.5;
+                                vehicle.x += Math.cos(vehicle.direction) * speed * (game.touch.joystickY < 0 ? 1 : -1);
+                                vehicle.y += Math.sin(vehicle.direction) * speed * (game.touch.joystickY < 0 ? 1 : -1);
+                            }
+                            // Steering
+                            vehicle.direction += game.touch.joystickX * 0.02;
+                        }
+                    }
+                    
+                    // Update player position to match vehicle
+                    game.player.x = vehicle.x;
+                    game.player.y = vehicle.y;
+                    game.player.direction = vehicle.direction;
+                }
+            }
+            
+            // Keep player in bounds
+            game.player.x = Math.max(0, Math.min(canvas.width, game.player.x));
+            game.player.y = Math.max(0, Math.min(canvas.height, game.player.y));
+            
+            // Update pedestrians
+            game.pedestrians.forEach(ped => {
+                // Change direction occasionally
+                if (Math.random() < 0.005 || ped.directionChangeTime <= 0) {
+                    ped.direction = Math.random() * Math.PI * 2;
+                    ped.directionChangeTime = 1000 + Math.random() * 2000;
+                } else {
+                    ped.directionChangeTime -= deltaTime;
+                }
+                
+                // Move
+                ped.x += Math.cos(ped.direction) * ped.speed;
+                ped.y += Math.sin(ped.direction) * ped.speed;
+                
+                // Keep in bounds and change direction if hitting edge
+                if (ped.x < 0 || ped.x > canvas.width || ped.y < 0 || ped.y > canvas.height) {
+                    ped.direction = Math.atan2(canvas.height / 2 - ped.y, canvas.width / 2 - ped.x);
+                }
+                
+                ped.x = Math.max(0, Math.min(canvas.width, ped.x));
+                ped.y = Math.max(0, Math.min(canvas.height, ped.y));
+            });
+            
+            // Update bullets
+            game.bullets.forEach(bullet => {
+                bullet.x += Math.cos(bullet.direction) * bullet.speed;
+                bullet.y += Math.sin(bullet.direction) * bullet.speed;
+            });
+            
+            // Remove bullets out of bounds
+            game.bullets = game.bullets.filter(bullet => 
+                bullet.x >= 0 && bullet.x <= canvas.width && 
+                bullet.y >= 0 && bullet.y <= canvas.height
+            );
+            
+            // Auto-shoot if shoot button is held down
+            if (game.touch.shootButtonPressed && game.player.inVehicle && Math.random() < 0.1) {
+                shoot();
+            }
+            
+            // Update UI
+            document.getElementById('health').textContent = game.player.health;
+            document.getElementById('money').textContent = game.player.money;
+            document.getElementById('vehicle').textContent = game.player.inVehicle ? "In Vehicle" : "On Foot";
+        }
+
+        // Render game
+        function render() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw buildings
+            game.buildings.forEach(building => {
+                ctx.fillStyle = building.color;
+                ctx.fillRect(building.x - building.width/2, building.y - building.height/2, building.width, building.height);
+                
+                // Draw windows
+                ctx.fillStyle = '#FFFF99';
+                const windowSize = 10;
+                const windowMargin = 15;
+                const windowsX = Math.floor((building.width - windowMargin) / (windowSize + windowMargin));
+                const windowsY = Math.floor((building.height - windowMargin) / (windowSize + windowMargin));
+                
+                for (let wx = 0; wx < windowsX; wx++) {
+                    for (let wy = 0; wy < windowsY; wy++) {
+                        if (Math.random() > 0.3) { // Not all windows are lit
+                            ctx.fillRect(
+                                building.x - building.width/2 + windowMargin + wx * (windowSize + windowMargin),
+                                building.y - building.height/2 + windowMargin + wy * (windowSize + windowMargin),
+                                windowSize, windowSize
+                            );
+                        }
+                    }
+                }
+            });
+            
+            // Draw vehicles
+            game.vehicles.forEach(vehicle => {
+                ctx.save();
+                ctx.translate(vehicle.x, vehicle.y);
+                ctx.rotate(vehicle.direction);
+                
+                // Car body
+                ctx.fillStyle = vehicle.color;
+                ctx.fillRect(-vehicle.width/2, -vehicle.height/2, vehicle.width, vehicle.height);
+                
+                // Windows
+                ctx.fillStyle = '#AADDFF';
+                ctx.fillRect(-vehicle.width/2 + 5, -vehicle.height/2 + 5, vehicle.width - 10, vehicle.height/3);
+                ctx.fillRect(-vehicle.width/2 + 5, vehicle.height/2 - vehicle.height/3 - 5, vehicle.width - 10, vehicle.height/3);
+                
+                // Wheels
+                ctx.fillStyle = '#333';
+                ctx.fillRect(-vehicle.width/2 - 5, -vehicle.height/4 - 3, 5, 6);
+                ctx.fillRect(-vehicle.width/2 - 5, vehicle.height/4 - 3, 5, 6);
+                ctx.fillRect(vehicle.width/2, -vehicle.height/4 - 3, 5, 6);
+                ctx.fillRect(vehicle.width/2, vehicle.height/4 - 3, 5, 6);
+                
+                ctx.restore();
+            });
+            
+            // Draw pedestrians
+            game.pedestrians.forEach(ped => {
+                ctx.save();
+                ctx.translate(ped.x, ped.y);
+                ctx.rotate(ped.direction);
+                
+                // Body
+                ctx.fillStyle = ped.color;
+                ctx.fillRect(-ped.width/2, -ped.height/2, ped.width, ped.height);
+                
+                // Head
+                ctx.beginPath();
+                ctx.arc(0, -ped.height/2 - 5, 5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.restore();
+            });
+            
+            // Draw bullets
+            ctx.fillStyle = '#FF0';
+            game.bullets.forEach(bullet => {
+                ctx.beginPath();
+                ctx.arc(bullet.x, bullet.y, 3, 0, Math.PI * 2);
+                ctx.fill();
+            });
+            
+            // Draw player
+            ctx.save();
+            ctx.translate(game.player.x, game.player.y);
+            ctx.rotate(game.player.direction);
+            
+            if (game.player.inVehicle) {
+                // Player is in vehicle, so we don't draw them separately
+            } else {
+                // Player on foot
+                ctx.fillStyle = '#0F0';
+                ctx.fillRect(-game.player.width/2, -game.player.height/2, game.player.width, game.player.height);
+                
+                // Head
+                ctx.beginPath();
+                ctx.arc(0, -game.player.height/2 - 8, 8, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+
+        // Try to enter a vehicle
+        function tryEnterVehicle() {
+            for (const vehicle of game.vehicles) {
+                if (!vehicle.occupied && 
+                    Math.abs(vehicle.x - game.player.x) < 50 && 
+                    Math.abs(vehicle.y - game.player.y) < 50) {
+                    
+                    vehicle.occupied = true;
+                    game.player.inVehicle = true;
+                    game.player.x = vehicle.x;
+                    game.player.y = vehicle.y;
+                    return;
+                }
+            }
+        }
+
+        // Exit current vehicle
+        function exitVehicle() {
+            const vehicle = game.vehicles.find(v => v.occupied);
+            if (vehicle) {
+                vehicle.occupied = false;
+                game.player.inVehicle = false;
+                
+                // Position player next to the vehicle
+                game.player.x = vehicle.x + Math.cos(vehicle.direction + Math.PI/2) * 40;
+                game.player.y = vehicle.y + Math.sin(vehicle.direction + Math.PI/2) * 40;
+            }
+        }
+
+        // Shoot from vehicle
+        function shoot() {
+            const vehicle = game.vehicles.find(v => v.occupied);
+            if (vehicle) {
+                game.bullets.push({
+                    x: vehicle.x + Math.cos(vehicle.direction) * 40,
+                    y: vehicle.y + Math.sin(vehicle.direction) * 40,
+                    direction: vehicle.direction,
+                    speed: 10
+                });
+            }
+        }
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            
+            // Update joystick center position
+            const joystickRect = joystick.getBoundingClientRect();
+            game.touch.joystickCenterX = joystickRect.left + joystickRect.width / 2;
+            game.touch.joystickCenterY = joystickRect.top + joystickRect.height / 2;
+        });
+
+        // Start the game
+        initGame();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
