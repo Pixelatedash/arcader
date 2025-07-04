@@ -1,0 +1,1083 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>3D GTA-Style Game</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #333;
+            touch-action: none;
+            font-family: Arial, sans-serif;
+        }
+        #gameContainer {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+        #ui {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            color: white;
+            text-shadow: 2px 2px 4px black;
+            pointer-events: none;
+        }
+        #instructions {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: white;
+            text-shadow: 2px 2px 4px black;
+            pointer-events: none;
+            font-size: 14px;
+        }
+        #joystick {
+            position: absolute;
+            width: 80px;
+            height: 80px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            bottom: 20px;
+            left: 20px;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        #joystickKnob {
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background-color: rgba(255, 255, 255, 0.5);
+            border-radius: 50%;
+            top: 20px;
+            left: 20px;
+            pointer-events: none;
+        }
+        #actionButtons {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            pointer-events: none;
+        }
+        .actionButton {
+            width: 60px;
+            height: 60px;
+            background-color: rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 20px;
+            pointer-events: auto;
+            touch-action: none;
+        }
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            text-shadow: 2px 2px 4px black;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <div id="loading">Loading assets...</div>
+        <div id="ui">
+            <div>Health: <span id="health">100</span>%</div>
+            <div>Money: $<span id="money">0</span></div>
+            <div>Vehicle: <span id="vehicle">On Foot</span></div>
+            <div>Wanted: <span id="wanted">★</span></div>
+            <div>Ammo: <span id="ammo">30</span>/30</div>
+        </div>
+        <div id="instructions">
+            WASD/Joystick to move, E/Button to enter/exit, SPACE/Button to shoot
+        </div>
+        
+        <div id="joystick">
+            <div id="joystickKnob"></div>
+        </div>
+        
+        <div id="actionButtons">
+            <div id="enterButton" class="actionButton">E</div>
+            <div id="shootButton" class="actionButton">🔫</div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/controls/PointerLockControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.132.2/examples/js/loaders/GLTFLoader.js"></script>
+    
+    <script>
+        // Game constants
+        const MAP_SIZE = 1000;
+        const BLOCK_SIZE = 100;
+        const STREET_WIDTH = 20;
+        const CAR_ACCELERATION = 0.2;
+        const CAR_DECELERATION = 0.1;
+        const CAR_MAX_SPEED = 0.2;
+        const CAR_TURN_SPEED = 0.05;
+        const BULLET_SPEED = 1.5;
+        const BULLET_RANGE = 100;
+        const PEDESTRIAN_SPEED = 0.02;
+        const WANTED_LEVEL_TIMER = 5000;
+        const PLAYER_MAX_HEALTH = 100;
+        const AMMO_CAPACITY = 30;
+        const RELOAD_TIME = 2000;
+        const PLAYER_HEIGHT = 1.8;
+
+        // Game state
+        const game = {
+            player: {
+                x: 0,
+                y: PLAYER_HEIGHT,
+                z: 0,
+                speed: 0.1,
+                health: PLAYER_MAX_HEALTH,
+                money: 0,
+                inVehicle: false,
+                direction: 0,
+                lastShotTime: 0,
+                shootCooldown: 300,
+                wantedLevel: 0,
+                wantedTimer: 0,
+                ammo: AMMO_CAPACITY,
+                maxAmmo: AMMO_CAPACITY,
+                reloading: false,
+                reloadStartTime: 0,
+                velocity: new THREE.Vector3(),
+                moveForward: false,
+                moveBackward: false,
+                moveLeft: false,
+                moveRight: false
+            },
+            vehicles: [],
+            buildings: [],
+            pedestrians: [],
+            bullets: [],
+            enemyBullets: [],
+            keys: {},
+            lastTime: 0,
+            touch: {
+                joystickActive: false,
+                joystickX: 0,
+                joystickY: 0,
+                joystickStartX: 0,
+                joystickStartY: 0,
+                joystickCenterX: 0,
+                joystickCenterY: 0,
+                enterButtonPressed: false,
+                shootButtonPressed: false
+            },
+            assetsLoaded: false,
+            assetsToLoad: 0,
+            assetsLoadedCount: 0
+        };
+
+        // Three.js setup
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x87CEEB);
+        scene.fog = new THREE.Fog(0x87CEEB, 10, 500);
+
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.y = PLAYER_HEIGHT;
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.getElementById('gameContainer').prepend(renderer.domElement);
+
+        // Controls
+        const controls = new THREE.PointerLockControls(camera, document.body);
+        
+        // Lighting
+        const ambientLight = new THREE.AmbientLight(0x404040);
+        scene.add(ambientLight);
+
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        directionalLight.position.set(1, 1, 1);
+        directionalLight.castShadow = true;
+        directionalLight.shadow.mapSize.width = 1024;
+        directionalLight.shadow.mapSize.height = 1024;
+        scene.add(directionalLight);
+
+        // Ground
+        const groundGeometry = new THREE.PlaneGeometry(MAP_SIZE, MAP_SIZE);
+        const groundMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 });
+        const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+        ground.rotation.x = -Math.PI / 2;
+        ground.receiveShadow = true;
+        scene.add(ground);
+
+        // Simple building geometry
+        const buildingGeometry = new THREE.BoxGeometry(30, 20, 30);
+        const buildingMaterial = new THREE.MeshStandardMaterial({ color: 0x888888 });
+
+        // Simple car geometry
+        const carGeometry = new THREE.BoxGeometry(3, 1.5, 5);
+        const carMaterial = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+
+        // Simple pedestrian geometry
+        const pedestrianGeometry = new THREE.BoxGeometry(0.8, 1.8, 0.8);
+        const pedestrianMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+
+        // Simple bullet geometry
+        const bulletGeometry = new THREE.SphereGeometry(0.1, 8, 8);
+        const bulletMaterial = new THREE.MeshBasicMaterial({ color: 0xffff00 });
+
+        // Initialize game objects
+        function initGame() {
+            createCityGrid();
+            
+            // Spawn player in the center
+            game.player.x = 0;
+            game.player.z = 0;
+            
+            // Create some vehicles
+            for (let i = 0; i < 10; i++) {
+                const vehiclePos = findStreetSpawnPosition();
+                game.vehicles.push(createVehicle(
+                    vehiclePos.x,
+                    vehiclePos.z,
+                    new THREE.Color(Math.random(), Math.random(), Math.random())
+                ));
+            }
+
+            // Create some pedestrians
+            for (let i = 0; i < 20; i++) {
+                const pedPos = findStreetSpawnPosition();
+                game.pedestrians.push(createPedestrian(
+                    pedPos.x,
+                    pedPos.z
+                ));
+            }
+            
+            updateJoystickPosition();
+            
+            // Hide loading screen
+            document.getElementById('loading').style.display = 'none';
+            game.assetsLoaded = true;
+            
+            // Add click-to-start functionality
+            const startGame = function() {
+                controls.lock();
+                document.removeEventListener('click', startGame);
+            };
+            document.addEventListener('click', startGame);
+        }
+
+        function findStreetSpawnPosition() {
+            while (true) {
+                const blockX = Math.floor(Math.random() * (MAP_SIZE / BLOCK_SIZE)) * BLOCK_SIZE - MAP_SIZE/2;
+                const blockZ = Math.floor(Math.random() * (MAP_SIZE / BLOCK_SIZE)) * BLOCK_SIZE - MAP_SIZE/2;
+                
+                const streetSegment = Math.floor(Math.random() * 4);
+                
+                let x, z;
+                
+                switch(streetSegment) {
+                    case 0: // North street
+                        x = blockX + STREET_WIDTH/2 + Math.random() * (BLOCK_SIZE - STREET_WIDTH);
+                        z = blockZ + STREET_WIDTH/2;
+                        break;
+                    case 1: // East street
+                        x = blockX + BLOCK_SIZE - STREET_WIDTH/2;
+                        z = blockZ + STREET_WIDTH/2 + Math.random() * (BLOCK_SIZE - STREET_WIDTH);
+                        break;
+                    case 2: // South street
+                        x = blockX + STREET_WIDTH/2 + Math.random() * (BLOCK_SIZE - STREET_WIDTH);
+                        z = blockZ + BLOCK_SIZE - STREET_WIDTH/2;
+                        break;
+                    case 3: // West street
+                        x = blockX + STREET_WIDTH/2;
+                        z = blockZ + STREET_WIDTH/2 + Math.random() * (BLOCK_SIZE - STREET_WIDTH);
+                        break;
+                }
+                
+                if (!checkBuildingCollision(x, 0, z, 10, 10)) {
+                    return { x, z };
+                }
+            }
+        }
+
+        function createVehicle(x, z, color) {
+            const carMaterial = new THREE.MeshStandardMaterial({ color: color });
+            const car = new THREE.Mesh(carGeometry, carMaterial);
+            car.position.set(x, 0.75, z);
+            car.castShadow = true;
+            car.receiveShadow = true;
+            scene.add(car);
+            
+            return {
+                mesh: car,
+                x: x,
+                z: z,
+                speed: 0,
+                maxSpeed: CAR_MAX_SPEED + Math.random() * 0.05,
+                acceleration: CAR_ACCELERATION,
+                occupied: false,
+                direction: Math.random() * Math.PI * 2,
+                turnSpeed: CAR_TURN_SPEED
+            };
+        }
+
+        function createPedestrian(x, z) {
+            const color = new THREE.Color(Math.random(), Math.random(), Math.random());
+            const pedMaterial = new THREE.MeshStandardMaterial({ color: color });
+            const ped = new THREE.Mesh(pedestrianGeometry, pedMaterial);
+            ped.position.set(x, 0.9, z);
+            ped.castShadow = true;
+            ped.receiveShadow = true;
+            scene.add(ped);
+            
+            const speed = PEDESTRIAN_SPEED * (0.8 + Math.random() * 0.4);
+            return {
+                mesh: ped,
+                x: x,
+                z: z,
+                speed: speed,
+                walkSpeed: speed,
+                runSpeed: speed * 2,
+                direction: Math.random() * Math.PI * 2,
+                directionChangeTime: 0,
+                nextDirectionChange: 2000 + Math.random() * 3000,
+                state: 'walking',
+                panicTime: 0,
+                health: 100,
+                lastShotTime: 0,
+                shootCooldown: 1000,
+                isEnemy: Math.random() < 0.3
+            };
+        }
+
+        function createCityGrid() {
+            const buildingMinSize = 20;
+            const buildingMaxSize = 40;
+            
+            for (let x = -MAP_SIZE/2; x < MAP_SIZE/2; x += BLOCK_SIZE) {
+                for (let z = -MAP_SIZE/2; z < MAP_SIZE/2; z += BLOCK_SIZE) {
+                    if (Math.random() < 0.1) continue;
+                    
+                    const buildingsInBlock = 2 + Math.floor(Math.random() * 3);
+                    for (let i = 0; i < buildingsInBlock; i++) {
+                        const width = buildingMinSize + Math.random() * (buildingMaxSize - buildingMinSize);
+                        const depth = buildingMinSize + Math.random() * (buildingMaxSize - buildingMinSize);
+                        const height = 10 + Math.random() * 30;
+                        
+                        const posX = x + STREET_WIDTH + Math.random() * (BLOCK_SIZE - STREET_WIDTH * 2 - width);
+                        const posZ = z + STREET_WIDTH + Math.random() * (BLOCK_SIZE - STREET_WIDTH * 2 - depth);
+                        
+                        if (!checkBuildingCollision(posX, 0, posZ, width, depth)) {
+                            const buildingGeometry = new THREE.BoxGeometry(width, height, depth);
+                            const buildingMaterial = new THREE.MeshStandardMaterial({ 
+                                color: new THREE.Color(
+                                    Math.random() * 0.2 + 0.2,
+                                    Math.random() * 0.2 + 0.2,
+                                    Math.random() * 0.2 + 0.2
+                                )
+                            });
+                            const building = new THREE.Mesh(buildingGeometry, buildingMaterial);
+                            building.position.set(posX + width/2, height/2, posZ + depth/2);
+                            building.castShadow = true;
+                            building.receiveShadow = true;
+                            scene.add(building);
+                            
+                            game.buildings.push({
+                                mesh: building,
+                                x: posX + width/2,
+                                z: posZ + depth/2,
+                                width: width,
+                                depth: depth,
+                                height: height
+                            });
+                        }
+                    }
+                }
+            }
+        }
+
+        // Handle keyboard input
+        window.addEventListener('keydown', (e) => {
+            game.keys[e.key.toLowerCase()] = true;
+            
+            switch(e.key.toLowerCase()) {
+                case 'w': game.player.moveForward = true; break;
+                case 'a': game.player.moveLeft = true; break;
+                case 's': game.player.moveBackward = true; break;
+                case 'd': game.player.moveRight = true; break;
+                case 'e':
+                    if (game.player.inVehicle) {
+                        exitVehicle();
+                    } else {
+                        tryEnterVehicle();
+                    }
+                    break;
+                case ' ':
+                    if (!game.player.reloading) {
+                        if (game.player.inVehicle || game.player.ammo > 0) {
+                            shoot();
+                        } else if (game.player.ammo === 0) {
+                            reload();
+                        }
+                    }
+                    break;
+                case 'r':
+                    if (!game.player.reloading && game.player.ammo < game.player.maxAmmo) {
+                        reload();
+                    }
+                    break;
+            }
+        });
+
+        window.addEventListener('keyup', (e) => {
+            game.keys[e.key.toLowerCase()] = false;
+            
+            switch(e.key.toLowerCase()) {
+                case 'w': game.player.moveForward = false; break;
+                case 'a': game.player.moveLeft = false; break;
+                case 's': game.player.moveBackward = false; break;
+                case 'd': game.player.moveRight = false; break;
+            }
+        });
+
+        // Touch event handlers
+        const joystick = document.getElementById('joystick');
+        const joystickKnob = document.getElementById('joystickKnob');
+        const enterButton = document.getElementById('enterButton');
+        const shootButton = document.getElementById('shootButton');
+
+        joystick.addEventListener('touchstart', handleJoystickStart, { passive: false });
+        joystick.addEventListener('touchmove', handleJoystickMove, { passive: false });
+        joystick.addEventListener('touchend', handleJoystickEnd, { passive: false });
+        
+        enterButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            game.touch.enterButtonPressed = true;
+            if (game.player.inVehicle) {
+                exitVehicle();
+            } else {
+                tryEnterVehicle();
+            }
+        });
+        
+        enterButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            game.touch.enterButtonPressed = false;
+        });
+        
+        shootButton.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            game.touch.shootButtonPressed = true;
+            if (!game.player.reloading) {
+                if (game.player.inVehicle || game.player.ammo > 0) {
+                    shoot();
+                } else if (game.player.ammo === 0) {
+                    reload();
+                }
+            }
+        });
+        
+        shootButton.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            game.touch.shootButtonPressed = false;
+        });
+
+        function handleJoystickStart(e) {
+            e.preventDefault();
+            game.touch.joystickActive = true;
+            const touch = e.touches[0];
+            game.touch.joystickStartX = touch.clientX;
+            game.touch.joystickStartY = touch.clientY;
+        }
+
+        function handleJoystickMove(e) {
+            if (!game.touch.joystickActive) return;
+            e.preventDefault();
+            
+            const touch = e.touches[0];
+            const deltaX = touch.clientX - game.touch.joystickStartX;
+            const deltaY = touch.clientY - game.touch.joystickStartY;
+            
+            const maxDistance = 40;
+            const distance = Math.min(maxDistance, Math.sqrt(deltaX * deltaX + deltaY * deltaY));
+            const angle = Math.atan2(deltaY, deltaX);
+            
+            game.touch.joystickX = Math.cos(angle) * distance;
+            game.touch.joystickY = Math.sin(angle) * distance;
+            
+            joystickKnob.style.transform = `translate(${game.touch.joystickX}px, ${game.touch.joystickY}px)`;
+            
+            // Update movement based on joystick
+            game.player.moveForward = game.touch.joystickY < -10;
+            game.player.moveBackward = game.touch.joystickY > 10;
+            game.player.moveLeft = game.touch.joystickX < -10;
+            game.player.moveRight = game.touch.joystickX > 10;
+        }
+
+        function handleJoystickEnd(e) {
+            e.preventDefault();
+            game.touch.joystickActive = false;
+            game.touch.joystickX = 0;
+            game.touch.joystickY = 0;
+            joystickKnob.style.transform = 'translate(0, 0)';
+            
+            // Reset movement when joystick is released
+            game.player.moveForward = false;
+            game.player.moveBackward = false;
+            game.player.moveLeft = false;
+            game.player.moveRight = false;
+        }
+
+        function updateJoystickPosition() {
+            const joystickRect = joystick.getBoundingClientRect();
+            game.touch.joystickCenterX = joystickRect.left + joystickRect.width / 2;
+            game.touch.joystickCenterY = joystickRect.top + joystickRect.height / 2;
+        }
+
+        function gameLoop(timestamp) {
+            if (!game.assetsLoaded) {
+                requestAnimationFrame(gameLoop);
+                return;
+            }
+
+            const deltaTime = timestamp - game.lastTime;
+            game.lastTime = timestamp;
+
+            update(deltaTime, timestamp);
+            render();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function update(deltaTime, timestamp) {
+            if (!game.player.inVehicle) {
+                updatePlayerOnFoot(deltaTime);
+            } else {
+                updatePlayerInVehicle(deltaTime);
+            }
+            
+            updatePedestrians(deltaTime);
+            updateBullets(deltaTime);
+            updateEnemyBullets(deltaTime);
+            updateWantedLevel(deltaTime);
+            
+            if (game.touch.shootButtonPressed && !game.player.reloading) {
+                if (game.player.inVehicle || game.player.ammo > 0) {
+                    if (timestamp - game.player.lastShotTime > game.player.shootCooldown) {
+                        shoot();
+                    }
+                } else if (game.player.ammo === 0) {
+                    reload();
+                }
+            }
+            
+            if (game.player.reloading && timestamp - game.player.reloadStartTime > RELOAD_TIME) {
+                game.player.ammo = game.player.maxAmmo;
+                game.player.reloading = false;
+            }
+            
+            updateUI();
+        }
+
+        function updatePlayerOnFoot(deltaTime) {
+            const actualDelta = deltaTime / 16; // Normalize to ~60fps
+            
+            // Update player velocity based on input
+            game.player.velocity.x = 0;
+            game.player.velocity.z = 0;
+            
+            if (controls.isLocked) {
+                const direction = new THREE.Vector3();
+                camera.getWorldDirection(direction);
+                direction.y = 0;
+                direction.normalize();
+                
+                const sideDirection = new THREE.Vector3();
+                sideDirection.crossVectors(new THREE.Vector3(0, 1, 0), direction);
+                
+                if (game.player.moveForward) {
+                    game.player.velocity.add(direction.multiplyScalar(game.player.speed * actualDelta));
+                }
+                if (game.player.moveBackward) {
+                    game.player.velocity.add(direction.multiplyScalar(-game.player.speed * actualDelta * 0.5));
+                }
+                if (game.player.moveLeft) {
+                    game.player.velocity.add(sideDirection.multiplyScalar(-game.player.speed * actualDelta * 0.75));
+                }
+                if (game.player.moveRight) {
+                    game.player.velocity.add(sideDirection.multiplyScalar(game.player.speed * actualDelta * 0.75));
+                }
+            }
+            
+            // Apply movement
+            const newX = game.player.x + game.player.velocity.x;
+            const newZ = game.player.z + game.player.velocity.z;
+            
+            if (!checkBuildingCollision(newX, game.player.y, newZ, 1, 1)) {
+                game.player.x = newX;
+                game.player.z = newZ;
+            }
+            
+            // Keep player within bounds
+            game.player.x = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, game.player.x));
+            game.player.z = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, game.player.z));
+            
+            // Update camera position
+            camera.position.set(game.player.x, PLAYER_HEIGHT, game.player.z);
+        }
+
+        function updatePlayerInVehicle(deltaTime) {
+            const actualDelta = deltaTime / 16; // Normalize to ~60fps
+            const vehicle = game.vehicles.find(v => v.occupied);
+            if (!vehicle) return;
+            
+            let acceleration = 0;
+            let turn = 0;
+            
+            if (game.player.moveForward) {
+                acceleration = 1;
+            }
+            if (game.player.moveBackward) {
+                acceleration = -0.5;
+            }
+            if (game.player.moveLeft) {
+                turn = -1;
+            }
+            if (game.player.moveRight) {
+                turn = 1;
+            }
+            
+            // Apply acceleration
+            if (acceleration !== 0) {
+                vehicle.speed += acceleration * vehicle.acceleration * actualDelta;
+                
+                // Limit speed based on direction
+                if (acceleration > 0) {
+                    vehicle.speed = Math.min(vehicle.speed, vehicle.maxSpeed);
+                } else {
+                    vehicle.speed = Math.max(vehicle.speed, -vehicle.maxSpeed * 0.5);
+                }
+            } else {
+                // Apply deceleration when no acceleration input
+                if (vehicle.speed > 0) {
+                    vehicle.speed = Math.max(0, vehicle.speed - CAR_DECELERATION * actualDelta);
+                } else if (vehicle.speed < 0) {
+                    vehicle.speed = Math.min(0, vehicle.speed + CAR_DECELERATION * actualDelta);
+                }
+            }
+            
+            // Apply turning (only when moving)
+            if (Math.abs(vehicle.speed) > 0.01) {
+                vehicle.direction += turn * vehicle.turnSpeed * (vehicle.speed / vehicle.maxSpeed) * actualDelta;
+            }
+            
+            // Calculate movement
+            const moveX = Math.sin(vehicle.direction) * vehicle.speed * actualDelta;
+            const moveZ = Math.cos(vehicle.direction) * vehicle.speed * actualDelta;
+            
+            const newX = vehicle.x + moveX;
+            const newZ = vehicle.z + moveZ;
+            
+            // Check collision before moving
+            if (!checkBuildingCollision(newX, 0, newZ, 3, 5)) {
+                vehicle.x = newX;
+                vehicle.z = newZ;
+            } else {
+                // If collision, stop the vehicle
+                vehicle.speed = 0;
+            }
+            
+            // Keep vehicle within bounds
+            vehicle.x = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, vehicle.x));
+            vehicle.z = Math.max(-MAP_SIZE/2, Math.min(MAP_SIZE/2, vehicle.z));
+            
+            // Update vehicle mesh position and rotation
+            vehicle.mesh.position.set(vehicle.x, 0.75, vehicle.z);
+            vehicle.mesh.rotation.y = -vehicle.direction;
+            
+            // Update player position to match vehicle
+            game.player.x = vehicle.x;
+            game.player.z = vehicle.z;
+            
+            // Update camera position and rotation
+            const cameraOffset = new THREE.Vector3(
+                Math.sin(vehicle.direction) * 5,
+                3,
+                Math.cos(vehicle.direction) * 5
+            );
+            camera.position.set(vehicle.x + cameraOffset.x, vehicle.y + cameraOffset.y, vehicle.z + cameraOffset.z);
+            camera.lookAt(vehicle.x, 0.75, vehicle.z);
+        }
+
+        function checkBuildingCollision(x, y, z, width, depth) {
+            for (const building of game.buildings) {
+                if (x + width/2 > building.x - building.width/2 &&
+                    x - width/2 < building.x + building.width/2 &&
+                    z + depth/2 > building.z - building.depth/2 &&
+                    z - depth/2 < building.z + building.depth/2) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        function updatePedestrians(deltaTime) {
+            game.pedestrians.forEach((ped, index) => {
+                // Check if pedestrian is hit by a bullet
+                for (let i = game.bullets.length - 1; i >= 0; i--) {
+                    const bullet = game.bullets[i];
+                    const distance = Math.sqrt(
+                        Math.pow(bullet.mesh.position.x - ped.mesh.position.x, 2) + 
+                        Math.pow(bullet.mesh.position.z - ped.mesh.position.z, 2)
+                    );
+                    
+                    if (distance < 0.5) {
+                        scene.remove(bullet.mesh);
+                        game.bullets.splice(i, 1);
+                        ped.health -= 34;
+                        
+                        if (ped.health <= 0) {
+                            scene.remove(ped.mesh);
+                            game.pedestrians.splice(index, 1);
+                            game.player.money += 100;
+                            game.player.wantedLevel = Math.min(game.player.wantedLevel + 1, 5);
+                            game.player.wantedTimer = WANTED_LEVEL_TIMER;
+                            return;
+                        }
+                    }
+                }
+                
+                // Enemy shooting logic
+                if (ped.isEnemy && !game.player.inVehicle) {
+                    const distToPlayer = Math.sqrt(
+                        Math.pow(game.player.x - ped.mesh.position.x, 2) + 
+                        Math.pow(game.player.z - ped.mesh.position.z, 2)
+                    );
+                    
+                    if (distToPlayer < 30 && Date.now() - ped.lastShotTime > ped.shootCooldown) {
+                        ped.direction = Math.atan2(
+                            game.player.z - ped.mesh.position.z,
+                            game.player.x - ped.mesh.position.x
+                        );
+                        
+                        const bulletMesh = new THREE.Mesh(bulletGeometry, new THREE.MeshBasicMaterial({ color: 0xff0000 }));
+                        bulletMesh.position.set(
+                            ped.mesh.position.x + Math.cos(ped.direction) * 1.5,
+                            0.9,
+                            ped.mesh.position.z + Math.sin(ped.direction) * 1.5
+                        );
+                        scene.add(bulletMesh);
+                        
+                        game.enemyBullets.push({
+                            mesh: bulletMesh,
+                            x: bulletMesh.position.x,
+                            z: bulletMesh.position.z,
+                            direction: ped.direction,
+                            speed: BULLET_SPEED * 0.7,
+                            startX: ped.mesh.position.x,
+                            startZ: ped.mesh.position.z
+                        });
+                        
+                        ped.lastShotTime = Date.now();
+                    }
+                }
+                
+                const distToPlayer = Math.sqrt(
+                    Math.pow(game.player.x - ped.mesh.position.x, 2) + 
+                    Math.pow(game.player.z - ped.mesh.position.z, 2)
+                );
+                
+                if (distToPlayer < 15 && (game.player.inVehicle || (ped.isEnemy && distToPlayer < 30))) {
+                    ped.state = 'running';
+                    ped.speed = ped.runSpeed;
+                    ped.panicTime = 2000;
+                    
+                    if (game.player.inVehicle || !ped.isEnemy) {
+                        ped.direction = Math.atan2(
+                            ped.mesh.position.z - game.player.z,
+                            ped.mesh.position.x - game.player.x
+                        );
+                    }
+                } else if (ped.panicTime > 0) {
+                    ped.panicTime -= deltaTime;
+                } else {
+                    ped.state = 'walking';
+                    ped.speed = ped.walkSpeed;
+                    
+                    if (ped.directionChangeTime <= 0) {
+                        ped.direction = Math.random() * Math.PI * 2;
+                        ped.directionChangeTime = ped.nextDirectionChange;
+                        ped.nextDirectionChange = 2000 + Math.random() * 3000;
+                    } else {
+                        ped.directionChangeTime -= deltaTime;
+                    }
+                }
+                
+                const moveX = Math.cos(ped.direction) * ped.speed * (deltaTime / 16);
+                const moveZ = Math.sin(ped.direction) * ped.speed * (deltaTime / 16);
+                
+                const newX = ped.mesh.position.x + moveX;
+                const newZ = ped.mesh.position.z + moveZ;
+                
+                if (!checkBuildingCollision(newX, 0, newZ, 0.8, 0.8)) {
+                    ped.mesh.position.x = newX;
+                    ped.mesh.position.z = newZ;
+                    ped.x = newX;
+                    ped.z = newZ;
+                    
+                    // Update pedestrian rotation
+                    ped.mesh.rotation.y = -ped.direction + Math.PI/2;
+                } else {
+                    ped.direction = Math.random() * Math.PI * 2;
+                }
+                
+                if (ped.mesh.position.x < -MAP_SIZE/2 || ped.mesh.position.x > MAP_SIZE/2 || 
+                    ped.mesh.position.z < -MAP_SIZE/2 || ped.mesh.position.z > MAP_SIZE/2) {
+                    ped.direction = Math.atan2(
+                        -ped.mesh.position.z,
+                        -ped.mesh.position.x
+                    );
+                }
+            });
+        }
+
+        function updateBullets(deltaTime) {
+            const actualDelta = deltaTime / 16;
+            
+            for (let i = game.bullets.length - 1; i >= 0; i--) {
+                const bullet = game.bullets[i];
+                
+                bullet.mesh.position.x += Math.cos(bullet.direction) * bullet.speed * actualDelta;
+                bullet.mesh.position.z += Math.sin(bullet.direction) * bullet.speed * actualDelta;
+                
+                if (checkBuildingCollision(bullet.mesh.position.x, 0, bullet.mesh.position.z, 0.1, 0.1)) {
+                    scene.remove(bullet.mesh);
+                    game.bullets.splice(i, 1);
+                    continue;
+                }
+                
+                const distanceTraveled = Math.sqrt(
+                    Math.pow(bullet.mesh.position.x - bullet.startX, 2) + 
+                    Math.pow(bullet.mesh.position.z - bullet.startZ, 2)
+                );
+                
+                if (distanceTraveled > BULLET_RANGE) {
+                    scene.remove(bullet.mesh);
+                    game.bullets.splice(i, 1);
+                }
+            }
+        }
+
+        function updateEnemyBullets(deltaTime) {
+            const actualDelta = deltaTime / 16;
+            
+            for (let i = game.enemyBullets.length - 1; i >= 0; i--) {
+                const bullet = game.enemyBullets[i];
+                
+                bullet.mesh.position.x += Math.cos(bullet.direction) * bullet.speed * actualDelta;
+                bullet.mesh.position.z += Math.sin(bullet.direction) * bullet.speed * actualDelta;
+                
+                // Check if hit player
+                const distanceToPlayer = Math.sqrt(
+                    Math.pow(bullet.mesh.position.x - game.player.x, 2) + 
+                    Math.pow(bullet.mesh.position.z - game.player.z, 2)
+                );
+                
+                if (distanceToPlayer < 0.5) {
+                    scene.remove(bullet.mesh);
+                    game.enemyBullets.splice(i, 1);
+                    game.player.health -= 10;
+                    if (game.player.health <= 0) {
+                        game.player.health = 0;
+                        // Game over logic could go here
+                    }
+                    continue;
+                }
+                
+                if (checkBuildingCollision(bullet.mesh.position.x, 0, bullet.mesh.position.z, 0.1, 0.1)) {
+                    scene.remove(bullet.mesh);
+                    game.enemyBullets.splice(i, 1);
+                    continue;
+                }
+                
+                const distanceTraveled = Math.sqrt(
+                    Math.pow(bullet.mesh.position.x - bullet.startX, 2) + 
+                    Math.pow(bullet.mesh.position.z - bullet.startZ, 2)
+                );
+                
+                if (distanceTraveled > BULLET_RANGE) {
+                    scene.remove(bullet.mesh);
+                    game.enemyBullets.splice(i, 1);
+                }
+            }
+        }
+
+        function updateWantedLevel(deltaTime) {
+            if (game.player.wantedLevel > 0) {
+                game.player.wantedTimer -= deltaTime;
+                if (game.player.wantedTimer <= 0) {
+                    game.player.wantedLevel = Math.max(0, game.player.wantedLevel - 1);
+                    game.player.wantedTimer = WANTED_LEVEL_TIMER;
+                }
+            }
+        }
+
+        function updateUI() {
+            document.getElementById('health').textContent = game.player.health;
+            document.getElementById('money').textContent = game.player.money;
+            document.getElementById('vehicle').textContent = game.player.inVehicle ? "In Vehicle" : "On Foot";
+            document.getElementById('wanted').textContent = '★'.repeat(game.player.wantedLevel);
+            document.getElementById('ammo').textContent = game.player.reloading ? "Reloading..." : `${game.player.ammo}/${game.player.maxAmmo}`;
+        }
+
+        function shoot() {
+            const now = Date.now();
+            if (now - game.player.lastShotTime < game.player.shootCooldown) return;
+            
+            if (!game.player.inVehicle && game.player.ammo <= 0) {
+                if (!game.player.reloading) {
+                    reload();
+                }
+                return;
+            }
+            
+            if (game.player.inVehicle) {
+                // Vehicle shooting
+                const vehicle = game.vehicles.find(v => v.occupied);
+                if (vehicle) {
+                    const bulletMesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+                    bulletMesh.position.set(
+                        vehicle.mesh.position.x + Math.sin(vehicle.direction) * 4,
+                        0.75,
+                        vehicle.mesh.position.z + Math.cos(vehicle.direction) * 4
+                    );
+                    scene.add(bulletMesh);
+                    
+                    game.bullets.push({
+                        mesh: bulletMesh,
+                        x: bulletMesh.position.x,
+                        z: bulletMesh.position.z,
+                        direction: vehicle.direction,
+                        speed: BULLET_SPEED,
+                        startX: vehicle.mesh.position.x,
+                        startZ: vehicle.mesh.position.z
+                    });
+                }
+            } else {
+                // Player on foot shooting
+                const direction = new THREE.Vector3();
+                camera.getWorldDirection(direction);
+                direction.y = 0;
+                direction.normalize();
+                
+                const bulletMesh = new THREE.Mesh(bulletGeometry, bulletMaterial);
+                bulletMesh.position.set(
+                    camera.position.x + direction.x * 1.5,
+                    camera.position.y - 0.5,
+                    camera.position.z + direction.z * 1.5
+                );
+                scene.add(bulletMesh);
+                
+                const angle = Math.atan2(direction.z, direction.x);
+                
+                game.bullets.push({
+                    mesh: bulletMesh,
+                    x: bulletMesh.position.x,
+                    z: bulletMesh.position.z,
+                    direction: angle,
+                    speed: BULLET_SPEED,
+                    startX: camera.position.x,
+                    startZ: camera.position.z
+                });
+                
+                if (!game.player.inVehicle) {
+                    game.player.ammo--;
+                    
+                    if (game.player.ammo <= 0) {
+                        reload();
+                    }
+                }
+            }
+            
+            game.player.lastShotTime = now;
+        }
+
+        function reload() {
+            if (!game.player.reloading && game.player.ammo < game.player.maxAmmo) {
+                game.player.reloading = true;
+                game.player.reloadStartTime = Date.now();
+            }
+        }
+
+        function tryEnterVehicle() {
+            for (const vehicle of game.vehicles) {
+                if (!vehicle.occupied) {
+                    const distance = Math.sqrt(
+                        Math.pow(vehicle.x - game.player.x, 2) + 
+                        Math.pow(vehicle.z - game.player.z, 2)
+                    );
+                    
+                    if (distance < 5) {
+                        vehicle.occupied = true;
+                        game.player.inVehicle = true;
+                        game.player.x = vehicle.x;
+                        game.player.z = vehicle.z;
+                        
+                        // Disable pointer lock controls when in vehicle
+                        controls.unlock();
+                        return;
+                    }
+                }
+            }
+        }
+
+        function exitVehicle() {
+            const vehicle = game.vehicles.find(v => v.occupied);
+            if (vehicle) {
+                vehicle.occupied = false;
+                game.player.inVehicle = false;
+                
+                // Exit to the side of the vehicle
+                const exitX = vehicle.x + Math.cos(vehicle.direction + Math.PI/2) * 3;
+                const exitZ = vehicle.z + Math.sin(vehicle.direction + Math.PI/2) * 3;
+                
+                // If that position is blocked, try the other side
+                if (!checkBuildingCollision(exitX, 0, exitZ, 1, 1)) {
+                    game.player.x = exitX;
+                    game.player.z = exitZ;
+                } else {
+                    game.player.x = vehicle.x + Math.cos(vehicle.direction - Math.PI/2) * 3;
+                    game.player.z = vehicle.z + Math.sin(vehicle.direction - Math.PI/2) * 3;
+                }
+                
+                // Re-enable pointer lock controls
+                controls.lock();
+            }
+        }
+
+        function render() {
+            renderer.render(scene, camera);
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            updateJoystickPosition();
+        }
+
+        window.addEventListener('resize', onWindowResize);
+
+        // Start the game
+        initGame();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
